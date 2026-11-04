@@ -158,6 +158,73 @@ got = nostr.query([{"kinds": [alerts.KIND]}], [fake_relay(drip)], timeout=1.5)
 check("query against a dripping relay returns in time (%.1f s)" % (time.time() - t),
       got == [] and time.time() - t < 4)
 
+# --- 4. strict hex, mixed batches, byte budget, eviction ---------------------
+
+
+def send_text(c, s):
+    b = s.encode()
+    if len(b) < 126:
+        c.sendall(bytes([0x81, len(b)]) + b)
+    elif len(b) < 65536:
+        c.sendall(bytes([0x81, 126]) + struct.pack(">H", len(b)) + b)
+    else:
+        c.sendall(bytes([0x81, 127]) + struct.pack(">Q", len(b)) + b)
+
+
+import json  # noqa: E402
+good2 = report_event(kind="jam")
+spaced = dict(good2, id=good2["id"][:10] + " " + good2["id"][11:])
+check("id with a space is not well formed", not nostr.well_formed(spaced))
+check("pow_bits of non-hex is 0", nostr.pow_bits("00 0" + "f" * 60) == 0 and nostr.pow_bits(None) == 0)
+
+
+def mixed(c):
+    c.recv(65536)   # the REQ
+    for ev in (spaced, {"id": 5}, "junk", good2):
+        send_text(c, json.dumps(["EVENT", "s", ev]))
+    send_text(c, json.dumps(["EOSE", "s"]))
+    time.sleep(0.5)
+
+
+got = nostr.query([{"kinds": [alerts.KIND]}], [fake_relay(mixed)], timeout=4, min_pow=alerts.POW_BITS)
+check("bad events in a batch don't lose the good one", [e["id"] for e in got] == [good2["id"]])
+
+big_sent = []
+
+
+def hoard(c):
+    c.recv(65536)
+    pad = "x" * (900 * 1024)
+    for i in range(40):   # 36 MB if nothing stopped it
+        send_text(c, json.dumps(["NOTICE", pad]))
+        big_sent.append(i)
+
+
+t = time.time()
+got = nostr.query([{"kinds": [alerts.KIND]}], [fake_relay(hoard)], timeout=6)
+time.sleep(0.3)
+check("relay byte budget stops reading (%d messages read before the stop)" % len(big_sent),
+      got == [] and len(big_sent) < 40 and time.time() - t < 8)
+
+reset()
+alerts._state["points"] = [[-3.70, 40.41]]
+for i in range(alerts.MAX_REPORTS):   # fill with old reports far away, no mining needed
+    alerts._state["community"]["%064x" % i] = {"id": "%064x" % i, "type": "jam", "lat": 50.0,
+                                               "lon": 10.0, "created": now - 3000, "heading": -1}
+fresh = report_event(kind="closed")
+alerts._merge_community([fresh])
+check("a full report table makes room instead of refusing (%d left)" % len(alerts._state["community"]),
+      fresh["id"] in alerts._state["community"] and len(alerts._state["community"]) <= alerts.MAX_REPORTS)
+
+reset()
+rid = "ab" * 32
+alerts._state["votes"][rid] = {"%064x" % i: (False, now - 3000) for i in range(alerts.MAX_VOTES_PER_REPORT)}
+v = vote_event(rid, True, now - 10)
+alerts._merge_community([v])
+vs = alerts._state["votes"][rid]
+check("a full vote list drops its oldest vote for a newer one",
+      v["pubkey"] in vs and len(vs) == alerts.MAX_VOTES_PER_REPORT)
+
 # --- signatures still right ---------------------------------------------------
 ev = nostr.sign_event(1, [["t", "x"]], "hi", pow=8)
 check("signed event with proof of work verifies", nostr.verify_event(ev) and nostr.pow_bits(ev["id"]) >= 8)

@@ -17,6 +17,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import socket
 import ssl
@@ -195,8 +196,14 @@ def _event_id(ev):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+_HEX = re.compile(r"[0-9a-f]+")
+
+
 def pow_bits(id_hex):
-    """Leading zero bits of an event id (NIP-13 difficulty)."""
+    """Leading zero bits of an event id (NIP-13 difficulty); 0 for anything
+    that isn't lowercase hex."""
+    if not isinstance(id_hex, str) or not _HEX.fullmatch(id_hex):
+        return 0
     n = 0
     for ch in id_hex:
         v = int(ch, 16)
@@ -254,11 +261,8 @@ def well_formed(ev):
         return False
     for k, ln in (("id", 64), ("pubkey", 64), ("sig", 128)):
         v = ev.get(k)
-        if not isinstance(v, str) or len(v) != ln:
-            return False
-        try:
-            bytes.fromhex(v)
-        except ValueError:
+        # strict lowercase hex: bytes.fromhex would also accept spaces
+        if not isinstance(v, str) or len(v) != ln or not _HEX.fullmatch(v):
             return False
     for k in ("created_at", "kind"):
         v = ev.get(k)
@@ -477,16 +481,21 @@ def publish(event, relays, timeout=8):
     return out
 
 
+MAX_BYTES_PER_RELAY = 4 * 1024 * 1024
+
+
 def query(filters, relays, timeout=8, limit_per_relay=500, min_pow=0):
     """Ask the relays for events matching the filters (a list of dicts).
-    Returns verified events, without duplicates. Events with less than
-    min_pow bits of proof of work are dropped before the (slow) signature
-    check."""
+    Returns verified events, without duplicates. Each relay may send at most
+    MAX_BYTES_PER_RELAY in all; malformed events, and events with less than
+    min_pow bits of proof of work, are dropped as they arrive, before the
+    (slow) signature check."""
     sub = secrets.token_hex(6)
 
     def work(url):
         ws = WebSocket(url, timeout=timeout)
         got = []
+        size = 0
         try:
             ws.send(json.dumps(["REQ", sub] + list(filters)))
             deadline = time.time() + timeout
@@ -495,14 +504,19 @@ def query(filters, relays, timeout=8, limit_per_relay=500, min_pow=0):
                     msg = ws.recv(deadline)
                     if msg is None:
                         break
+                    size += len(msg)
+                    if size > MAX_BYTES_PER_RELAY:
+                        break
                     data = json.loads(msg)
                     if not isinstance(data, list) or not data:
                         continue
                     if data[0] == "EVENT" and len(data) > 2:
-                        got.append(data[2])
+                        ev = data[2]
+                        if well_formed(ev) and (not min_pow or pow_bits(ev["id"]) >= min_pow):
+                            got.append(ev)
                     elif data[0] in ("EOSE", "CLOSED"):
                         break
-            except (OSError, ValueError):
+            except (OSError, ValueError, RecursionError):
                 # slow, oversized or garbled: keep what arrived before it
                 pass
             try:
@@ -514,13 +528,13 @@ def query(filters, relays, timeout=8, limit_per_relay=500, min_pow=0):
             ws.close()
     seen = {}
     for url, r in _each_relay(relays, work, timeout).items():
-        if isinstance(r, Exception):
+        if not isinstance(r, list):
             continue
         for ev in r:
-            if not well_formed(ev) or ev["id"] in seen:
+            try:
+                if ev["id"] not in seen and verify_event(ev):
+                    seen[ev["id"]] = ev
+            except Exception:
+                # one bad event must not lose the others
                 continue
-            if min_pow and pow_bits(ev["id"]) < min_pow:
-                continue
-            if verify_event(ev):
-                seen[ev["id"]] = ev
     return list(seen.values())

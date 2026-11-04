@@ -270,7 +270,11 @@ def _merge_one(ev, now):
             return
         votes = _state["votes"].setdefault(rid, {})
         if ev["pubkey"] not in votes and len(votes) >= MAX_VOTES_PER_REPORT:
-            return
+            # full: the newest votes say most about now, so the oldest goes
+            oldest = min(votes, key=lambda k: votes[k][1])
+            if votes[oldest][1] >= created:
+                return
+            del votes[oldest]
         # one vote per key; a newer one from the same key replaces it
         old = votes.get(ev["pubkey"])
         if old is None or old[1] < created:
@@ -285,12 +289,28 @@ def _merge_one(ev, now):
         return
     heading = _number(_tag(ev, "heading"), 0, 360)
     if ev["id"] not in _state["community"] and len(_state["community"]) >= MAX_REPORTS:
-        return
+        _make_room()
     _state["community"][ev["id"]] = {
         "id": ev["id"], "source": "community", "type": kind,
         "lat": lat, "lon": lon, "created": created, "expires": 0,
         "road": "", "km": "", "town": "", "dest": "", "detail": "",
         "up": 0, "down": 0, "heading": int(heading) % 360 if heading is not None else -1}
+
+
+def _make_room():
+    """The report table is full: drop a tenth of it, first reports outside
+    the watched area, then the oldest. New reports are never refused, so a
+    flood can't lock out real ones; it can only push out old ones."""
+    pts = _state["points"]
+    box = _bbox(pts, 0.1) if pts else None
+    reports = _state["community"]
+
+    def keep_score(rid):
+        a = reports[rid]
+        inside = bool(box) and _in_bbox(a["lat"], a["lon"], box)
+        return (inside, a["created"])
+    for rid in sorted(reports, key=keep_score)[:max(1, MAX_REPORTS // 10)]:
+        del reports[rid]
 
 
 def _merge_community(events):
