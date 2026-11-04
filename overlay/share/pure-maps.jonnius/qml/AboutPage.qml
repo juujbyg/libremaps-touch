@@ -135,7 +135,9 @@ PagePL {
                          "• Places nearby (Food, Coffee, Fuel and the other shortcuts): an Overpass server, or Photon if those fail, sees the area you search.\n" +
                          "• Speed limits: Valhalla sees your position while you drive, if Road alerts is on.\n" +
                          "• Speed cameras: an Overpass server (overpass.kumi.systems, maps.mail.ru or overpass-api.de) sees the outline of your route, if Road alerts is on.\n" +
-                         "• Approximate position when GPS has no fix: ipwho.is sees your IP address, if that option is on.\n\n" +
+                         "• Approximate position when GPS has no fix: ipwho.is sees your IP address, if that option is on.\n" +
+                         "• Official traffic incidents in Spain: the DGT's open data feed (nap.dgt.es) is downloaded whole, so it learns nothing about where you are, if Traffic alerts is on.\n" +
+                         "• Reports by other drivers: the Nostr relays relay.damus.io, nos.lol, relay.primal.net and offchain.pub see the area you're looking at or driving through, if Traffic alerts is on. A report you send is public: it holds the spot, your direction and the time, signed with a one-use key so your reports can't be linked to each other. Like every server listed here, the relays see your IP address.\n\n" +
                          "Road alerts and the approximate position can be switched off in Preferences. Your last known position is stored only on the phone.")
             wrapMode: Text.WordWrap
         }

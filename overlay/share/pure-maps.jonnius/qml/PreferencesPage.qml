@@ -516,6 +516,16 @@ PagePL {
                     }
 
                     TextSwitchPL {
+                        id: communityAlertsSwitch
+                        checked: app.conf.communityAlerts
+                        text: app.tr("Traffic alerts: official incidents (DGT, Spain) and reports by other drivers (Nostr relays)")
+                        onCheckedChanged: {
+                            if (communityAlertsSwitch.checked===app.conf.communityAlerts) return;
+                            app.conf.set("community_alerts", communityAlertsSwitch.checked);
+                        }
+                    }
+
+                    TextSwitchPL {
                         id: approxLocationSwitch
                         checked: app.conf.approxLocation
                         text: app.tr("Approximate position from network when GPS has no fix")

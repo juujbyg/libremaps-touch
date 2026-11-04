@@ -635,6 +635,7 @@ MapboxMap {
         map.configureLayers();
         positionMarker.initIcons();
         positionMarker.configureLayers();
+        if (typeof alertWatch !== "undefined" && alertWatch) alertWatch.initMap();
     }
 
     function _updateLocationsAddPoint(l, name, symbol) {

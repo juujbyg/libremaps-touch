@@ -28,6 +28,10 @@ PageEmptyPL {
 
     ApproxLocation { id: approxLocation }
     RoadWatch { id: roadWatch }
+    Alerts { id: alertWatch }
+    AlertBanner { id: alertBanner }
+    ReportButton { id: reportButton }
+    ReportSheet { id: reportSheet }
     AttributionButton { id: attributionButton }
     BasemapButton { id: basemapButton }
     CenterButton { id: centerButton }

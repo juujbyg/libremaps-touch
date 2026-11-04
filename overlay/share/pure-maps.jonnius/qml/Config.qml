@@ -73,6 +73,7 @@ Item {
     property string profile
     property bool   approxLocation: true
     property bool   roadAlerts: true
+    property bool   communityAlerts: true
     property bool   reroute
     property bool   routePageShowDestinationsHelp: true
     property bool   routePageShowDestinationsHelpShown: false // not persistent, only this session
@@ -132,6 +133,7 @@ Item {
         "navigationHorizontalAccuracy": "navigation_horizontal_accuracy",
         "approxLocation": "approx_location",
         "roadAlerts": "road_alerts",
+        "communityAlerts": "community_alerts",
         "reroute": "reroute",
         "routePageShowDestinationsHelp": "route_page_show_destinations_help",
         "profile": "profile",

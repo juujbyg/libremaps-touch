@@ -15,7 +15,13 @@ Osmo Salomaa and contributors, and of its Ubuntu Touch port by Jonatan Hatakeyam
   Transitous for public transport (`routers/libremaps.py`)
 - A keyless "nearby" guide that uses Overpass, with Photon as a fallback (`guides/libremaps.py`)
 - Offline maps: downloads a region's tiles, fonts and sprites (`poor/offline.py`, `qml/OfflinePage.qml`)
-- Speed limits and speed-camera alerts from OpenStreetMap (`qml/RoadWatch.qml`)
+- Speed limits and fixed speed cameras from OpenStreetMap (`qml/RoadWatch.qml`)
+- Traffic alerts: official incidents from Spain's DGT, and police, accidents, hazards,
+  closed roads, jams and mobile cameras reported by other drivers through Nostr relays
+  (`poor/alerts.py`, `poor/nostr.py`, `qml/Alerts.qml`). Reports are anonymous: each one is
+  signed with a fresh one-use key and carries only the spot, the direction and the time.
+  They expire on their own (30 minutes to 3 hours), and drivers passing by can confirm or
+  dismiss them.
 - An approximate position until the first GPS fix, so routing works right away (`qml/ApproxLocation.qml`)
 
 ## Outside services
@@ -23,8 +29,10 @@ Osmo Salomaa and contributors, and of its Ubuntu Touch port by Jonatan Hatakeyam
 These are contacted only when you use the feature that needs them:
 OpenFreeMap (map tiles), Photon (search, and places nearby when Overpass fails),
 Valhalla at openstreetmap.de (routes and speed limits),
-Transitous (public transport), Overpass (speed cameras and places nearby) and ipwho.is (rough
-position before the first GPS fix). The app's About page lists them too.
+Transitous (public transport), Overpass (speed cameras and places nearby), ipwho.is (rough
+position before the first GPS fix), the DGT's open data feed at nap.dgt.es (official traffic
+incidents in Spain) and the Nostr relays relay.damus.io, nos.lol, relay.primal.net and
+offchain.pub (drivers' reports, read by area and published when you report). The app's About page lists them too.
 
 ## API keys
 

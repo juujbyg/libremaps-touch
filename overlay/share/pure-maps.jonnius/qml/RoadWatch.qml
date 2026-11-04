@@ -3,7 +3,8 @@
  * Road watch: open-data helpers for driving, from OpenStreetMap via Overpass.
  *  - the speed limit of the road you are on, from Valhalla (feeds the speed
  *    bubble and sign; only where OpenStreetMap has a maxspeed tag)
- *  - speed cameras along the planned route, with a spoken and visual warning
+ *  - fixed speed cameras along the planned route (Alerts.qml shows them on
+ *    the map and warns before each one)
  *
  * The current position (to Valhalla, for the limit) and the route outline
  * (to Overpass, for cameras) are sent to public OpenStreetMap servers, only
@@ -22,9 +23,7 @@ Item {
 
     // limit of the road under us, m/s; 0 when unknown
     property real limit: 0
-    property var  cameras: []          // [{lat, lon, alerted}]
-    property int  cameraCount: cameras.length
-    property string cameraNext: ""     // text for the closest camera ahead
+    property var  cameras: []          // [{lat, lon, maxspeed}], maxspeed in km/h or 0
     property string valhalla: "https://valhalla1.openstreetmap.de/trace_attributes"
     // public Overpass servers are slow and flaky; try them in turn
     property var servers: ["https://overpass.kumi.systems/api/interpreter",
@@ -106,7 +105,8 @@ Item {
                 var dup = false;
                 for (var j = 0; j < found.length; ++j)
                     if (dist(c.lat, c.lon, found[j].lat, found[j].lon) < 25) { dup = true; break; }
-                if (!dup) found.push({lat: c.lat, lon: c.lon, alerted: false});
+                var ms = c.tags && c.tags.maxspeed ? parseInt(c.tags.maxspeed) : 0;
+                if (!dup) found.push({lat: c.lat, lon: c.lon, maxspeed: ms > 0 && ms < 200 ? ms : 0});
             }
             watch.cameras = found;
             if (found.length > 0)
@@ -121,32 +121,6 @@ Item {
             if (d < best) best = d;
         }
         return best;
-    }
-
-    // check cameras ahead while driving
-    Connections {
-        target: gps
-        onPositionUpdated: watch.checkCameras()
-    }
-
-    function checkCameras() {
-        if (!_driving || cameras.length === 0) { cameraNext = ""; return; }
-        var lat = gps.coordinate.latitude, lon = gps.coordinate.longitude;
-        var closest = 1e9;
-        for (var i = 0; i < cameras.length; ++i) {
-            var c = cameras[i];
-            var d = dist(lat, lon, c.lat, c.lon);
-            if (d > 1500) c.alerted = false;
-            if (d < closest) closest = d;
-            if (!c.alerted && d < 700) {
-                c.alerted = true;
-                var m = Math.round(d / 50) * 50;
-                var msg = app.tr("Speed camera ahead, %1 meters").arg(m);
-                app.notification.flash(msg, "cam", 8);
-                app.navigator.say(msg);
-            }
-        }
-        cameraNext = closest < 700 ? app.tr("Camera %1 m").arg(Math.round(closest / 10) * 10) : "";
     }
 
     function dist(lat1, lon1, lat2, lon2) {

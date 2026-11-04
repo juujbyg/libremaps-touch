@@ -39,6 +39,7 @@ DEFAULTS = {
     "auto_rotate_when_navigating": True,
     "approx_location": True,
     "road_alerts": True,
+    "community_alerts": True,
     "basemap_auto_light": "none",
     "basemap_auto_mode": True,
     "basemap_fallback": "OpenTopoMap", # should work without any API keys or API keys are always added

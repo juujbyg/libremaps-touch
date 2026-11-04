@@ -44,6 +44,7 @@ from poor import http
 from poor import polysimp
 from poor import storage
 from poor import offline
+from poor import alerts
 from poor.attrdict import AttrDict
 from poor.config import ConfigurationStore
 conf = ConfigurationStore()
