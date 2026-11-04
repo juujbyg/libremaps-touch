@@ -253,7 +253,7 @@ def _number(text, low, high):
     return v
 
 
-def _merge_one(ev, now):
+def _merge_one(ev, now, budget):
     # events come from strangers: nostr.query has checked the signature, but
     # the shape and every value are still checked before use
     if not nostr.well_formed(ev) or nostr.pow_bits(ev["id"]) < POW_BITS:
@@ -270,11 +270,17 @@ def _merge_one(ev, now):
             return
         votes = _state["votes"].setdefault(rid, {})
         if ev["pubkey"] not in votes and len(votes) >= MAX_VOTES_PER_REPORT:
-            # full: the newest votes say most about now, so the oldest goes
-            oldest = min(votes, key=lambda k: votes[k][1])
-            if votes[oldest][1] >= created:
+            # full: a vote cast outside the report's life goes first, then the
+            # oldest; timestamps are the sender's, so never later than now.
+            # Only a few evictions per round, so one flood can't replace them all.
+            if budget["votes"] <= 0:
                 return
-            del votes[oldest]
+            rank = lambda c: _vote_rank(rid, c, now)
+            weakest = min(votes, key=lambda k: rank(votes[k][1]))
+            if rank(votes[weakest][1]) >= rank(created):
+                return
+            del votes[weakest]
+            budget["votes"] -= 1
         # one vote per key; a newer one from the same key replaces it
         old = votes.get(ev["pubkey"])
         if old is None or old[1] < created:
@@ -289,7 +295,12 @@ def _merge_one(ev, now):
         return
     heading = _number(_tag(ev, "heading"), 0, 360)
     if ev["id"] not in _state["community"] and len(_state["community"]) >= MAX_REPORTS:
-        _make_room()
+        # full: make room once per round (a tenth of the table), then refuse,
+        # so one flood can displace at most a tenth of what's stored
+        if budget["reports"] <= 0:
+            return
+        _make_room(now)
+        budget["reports"] -= 1
     _state["community"][ev["id"]] = {
         "id": ev["id"], "source": "community", "type": kind,
         "lat": lat, "lon": lon, "created": created, "expires": 0,
@@ -297,10 +308,21 @@ def _merge_one(ev, now):
         "up": 0, "down": 0, "heading": int(heading) % 360 if heading is not None else -1}
 
 
-def _make_room():
-    """The report table is full: drop a tenth of it, first reports outside
-    the watched area, then the oldest. New reports are never refused, so a
-    flood can't lock out real ones; it can only push out old ones."""
+def _vote_rank(rid, created, now):
+    """Higher is worth keeping: cast within the report's life, then newer
+    (a sender's timestamp counts as no later than now)."""
+    a = _state["community"].get(rid)
+    inside = False
+    if a:
+        life = LIFETIME[a["type"]]
+        inside = a["created"] - 60 <= created <= a["created"] + MAX_LIFETIMES * life
+    return (inside, min(created, now))
+
+
+def _make_room(now):
+    """The report table is full: drop a tenth of it. Kept longest: reports in
+    the watched area, then ones other drivers confirmed, then newer ones
+    (a sender's timestamp counts as no later than now)."""
     pts = _state["points"]
     box = _bbox(pts, 0.1) if pts else None
     reports = _state["community"]
@@ -308,17 +330,21 @@ def _make_room():
     def keep_score(rid):
         a = reports[rid]
         inside = bool(box) and _in_bbox(a["lat"], a["lon"], box)
-        return (inside, a["created"])
+        confirmed = any(up and _vote_rank(rid, c, now)[0]
+                        for up, c in _state["votes"].get(rid, {}).values())
+        return (inside, confirmed, min(a["created"], now))
     for rid in sorted(reports, key=keep_score)[:max(1, MAX_REPORTS // 10)]:
         del reports[rid]
 
 
 def _merge_community(events):
     now = time.time()
+    # evictions allowed in this round (see _merge_one)
+    budget = {"reports": 1, "votes": MAX_VOTES_PER_REPORT // 10}
     with _lock:
         for ev in events:
             try:
-                _merge_one(ev, now)
+                _merge_one(ev, now, budget)
             except Exception:
                 # one bad event must not drop the others
                 continue

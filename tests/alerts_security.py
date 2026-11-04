@@ -225,6 +225,49 @@ vs = alerts._state["votes"][rid]
 check("a full vote list drops its oldest vote for a newer one",
       v["pubkey"] in vs and len(vs) == alerts.MAX_VOTES_PER_REPORT)
 
+# --- 5. eviction ranks on clamped time, protects confirmed reports, per-round cap
+reset()
+alerts._state["points"] = [[-3.70, 40.41]]
+conf_id = "c" * 64
+alerts._state["community"][conf_id] = {"id": conf_id, "type": "closed", "lat": 40.41, "lon": -3.70,
+                                       "created": now - 7000, "heading": -1}
+alerts._state["votes"][conf_id] = {"f" * 64: (True, now - 6000)}
+for i in range(alerts.MAX_REPORTS - 1):   # spam in the same area, dated 5 minutes ahead
+    alerts._state["community"]["%064x" % i] = {"id": "%064x" % i, "type": "jam", "lat": 40.41,
+                                               "lon": -3.70, "created": now + 290, "heading": -1}
+batch = [report_event(kind="police") for _ in range(3)]
+alerts._merge_community(batch)
+check("a confirmed report outlives unconfirmed spam dated in the future",
+      conf_id in alerts._state["community"])
+check("table stays within its cap", len(alerts._state["community"]) <= alerts.MAX_REPORTS)
+before = len(alerts._state["community"])
+for i in range(before, alerts.MAX_REPORTS):
+    alerts._state["community"]["%064x" % (10**6 + i)] = {"id": "x", "type": "jam", "lat": 40.41,
+                                                         "lon": -3.70, "created": now, "heading": -1}
+two = [report_event(kind="hazard") for _ in range(2)]
+alerts._merge_community(two[:1])
+n1 = len(alerts._state["community"])
+alerts._state["community"].update({"%064x" % (2 * 10**6 + i): {"id": "y", "type": "jam", "lat": 40.41,
+                                   "lon": -3.70, "created": now, "heading": -1}
+                                   for i in range(alerts.MAX_REPORTS - n1)})
+check("one round evicts at most a tenth (%d dropped)" % (alerts.MAX_REPORTS - n1 + 1),
+      alerts.MAX_REPORTS - n1 + 1 <= alerts.MAX_REPORTS // 10 + 1)
+
+reset()
+rep2 = {"id": "d" * 64, "type": "police", "lat": 40.41, "lon": -3.70, "created": now - 600, "heading": -1}
+alerts._state["community"][rep2["id"]] = rep2
+alerts._state["votes"][rep2["id"]] = {"%064x" % i: (True, now - 500) for i in range(alerts.MAX_VOTES_PER_REPORT)}
+outside = vote_event(rep2["id"], False, now - 3000)   # before the report: outside its life
+alerts._merge_community([outside])
+check("a vote from outside the report's life evicts nothing",
+      outside["pubkey"] not in alerts._state["votes"][rep2["id"]])
+vote_flood = [vote_event(rep2["id"], False, now + 200) for _ in range(alerts.MAX_VOTES_PER_REPORT // 10 + 5)]
+alerts._merge_community(vote_flood)
+vs = alerts._state["votes"][rep2["id"]]
+downs = sum(1 for up, _ in vs.values() if not up)
+check("one round replaces at most %d votes (%d did)" % (alerts.MAX_VOTES_PER_REPORT // 10, downs),
+      downs <= alerts.MAX_VOTES_PER_REPORT // 10)
+
 # --- signatures still right ---------------------------------------------------
 ev = nostr.sign_event(1, [["t", "x"]], "hi", pow=8)
 check("signed event with proof of work verifies", nostr.verify_event(ev) and nostr.pow_bits(ev["id"]) >= 8)
