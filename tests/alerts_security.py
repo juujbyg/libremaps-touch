@@ -218,6 +218,8 @@ check("a full report table makes room instead of refusing (%d left)" % len(alert
 
 reset()
 rid = "ab" * 32
+alerts._state["community"][rid] = {"id": rid, "type": "police", "lat": 40.41, "lon": -3.70,
+                                   "created": now - 4000, "heading": -1}
 alerts._state["votes"][rid] = {"%064x" % i: (False, now - 3000) for i in range(alerts.MAX_VOTES_PER_REPORT)}
 v = vote_event(rid, True, now - 10)
 alerts._merge_community([v])
@@ -267,6 +269,29 @@ vs = alerts._state["votes"][rep2["id"]]
 downs = sum(1 for up, _ in vs.values() if not up)
 check("one round replaces at most %d votes (%d did)" % (alerts.MAX_VOTES_PER_REPORT // 10, downs),
       downs <= alerts.MAX_VOTES_PER_REPORT // 10)
+
+# --- 6. per-report vote budget, unknown reports, batch order ---------------
+reset()
+ra = {"id": "a" * 64, "type": "jam", "lat": 40.41, "lon": -3.70, "created": now - 600, "heading": -1}
+rb = {"id": "b" * 64, "type": "jam", "lat": 40.41, "lon": -3.70, "created": now - 600, "heading": -1}
+for r in (ra, rb):
+    alerts._state["community"][r["id"]] = r
+    alerts._state["votes"][r["id"]] = {"%063x%s" % (i, r["id"][0]): (True, now - 590)
+                                       for i in range(alerts.MAX_VOTES_PER_REPORT)}
+spam_a = [vote_event(ra["id"], False, now - 5) for _ in range(alerts.MAX_VOTES_PER_REPORT // 10 + 3)]
+real_b = vote_event(rb["id"], False, now - 5)
+alerts._merge_community(spam_a + [real_b])
+check("votes on one report don't use up another's budget",
+      real_b["pubkey"] in alerts._state["votes"][rb["id"]])
+ghost = vote_event("e" * 64, False, now - 5)
+alerts._merge_community([ghost])
+check("votes on unknown reports are ignored", "e" * 64 not in alerts._state["votes"])
+reset()
+late_rep = report_event(kind="accident", created=now - 30)
+its_vote = vote_event(late_rep["id"], True, now - 10)
+alerts._merge_community([its_vote, late_rep])   # vote listed before its report
+check("a vote listed before its report still counts",
+      its_vote["pubkey"] in alerts._state["votes"].get(late_rep["id"], {}))
 
 # --- signatures still right ---------------------------------------------------
 ev = nostr.sign_event(1, [["t", "x"]], "hi", pow=8)

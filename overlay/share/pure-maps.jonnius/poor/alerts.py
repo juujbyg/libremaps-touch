@@ -268,19 +268,23 @@ def _merge_one(ev, now, budget):
         rid = _tag(ev, "e")
         if not rid or len(rid) != 64:
             return
+        if rid not in _state["community"]:
+            # only votes on reports we hold (merged first, see _merge_community)
+            return
         votes = _state["votes"].setdefault(rid, {})
         if ev["pubkey"] not in votes and len(votes) >= MAX_VOTES_PER_REPORT:
             # full: a vote cast outside the report's life goes first, then the
             # oldest; timestamps are the sender's, so never later than now.
             # Only a few evictions per round, so one flood can't replace them all.
-            if budget["votes"] <= 0:
+            left = budget["votes"].get(rid, MAX_VOTES_PER_REPORT // 10)
+            if left <= 0:
                 return
             rank = lambda c: _vote_rank(rid, c, now)
             weakest = min(votes, key=lambda k: rank(votes[k][1]))
             if rank(votes[weakest][1]) >= rank(created):
                 return
             del votes[weakest]
-            budget["votes"] -= 1
+            budget["votes"][rid] = left - 1
         # one vote per key; a newer one from the same key replaces it
         old = votes.get(ev["pubkey"])
         if old is None or old[1] < created:
@@ -339,10 +343,25 @@ def _make_room(now):
 
 def _merge_community(events):
     now = time.time()
-    # evictions allowed in this round (see _merge_one)
-    budget = {"reports": 1, "votes": MAX_VOTES_PER_REPORT // 10}
+    # evictions allowed in this round: one from the report table, and a few
+    # votes per report (counted per report id)
+    budget = {"reports": 1, "votes": {}}
     with _lock:
-        for ev in events:
+        pts = _state["points"]
+        box = _bbox(pts, 0.1) if pts else None
+
+        def order(ev):
+            # reports before votes (votes need their report), then the watched
+            # area, then newer; a sender's time counts as no later than now
+            try:
+                is_vote = _tag(ev, "vote") is not None
+                lat = _number(_tag(ev, "lat"), -90, 90)
+                lon = _number(_tag(ev, "lon"), -180, 180)
+                inside = bool(box) and lat is not None and lon is not None and _in_bbox(lat, lon, box)
+                return (is_vote, not inside, -min(int(ev["created_at"]), now))
+            except Exception:
+                return (True, True, 0)
+        for ev in sorted(events, key=order):
             try:
                 _merge_one(ev, now, budget)
             except Exception:
