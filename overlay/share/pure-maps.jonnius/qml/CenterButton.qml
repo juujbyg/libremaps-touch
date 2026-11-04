@@ -104,7 +104,10 @@ MapButton {
     }
     z: 500
 
-    property bool hidden: app.modalDialog || app.infoPanelOpen || (map.cleanMode && !app.conf.mapModeCleanShowCenter)
+    // while navigating it shows only after the map was moved away from you
+    property bool hidden: app.modalDialog || app.infoPanelOpen ||
+                          (app.mode === modes.navigate && map.autoCenter) ||
+                          (map.cleanMode && !app.conf.mapModeCleanShowCenter)
     property bool nextClickToAuto: false
 
     Timer {

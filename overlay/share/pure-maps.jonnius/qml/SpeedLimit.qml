@@ -1,36 +1,25 @@
 /* -*- coding: utf-8-unix -*-
  *
- * Copyright (C) 2018 Rinigus
+ * LibreMaps: the speed limit as a road sign (white disc, red ring),
+ * sitting on the top-right corner of the speed bubble. Without the speed
+ * bubble it stands alone in the bottom-left corner.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 import QtQuick 2.0
+import QtGraphicalEffects 1.0
 
-Rectangle {
-    id: ring
+Item {
+    id: sign
 
-    anchors.left: parent.left
-    anchors.leftMargin: styler.themePaddingLarge
-    anchors.bottom: driveSpeed.visible ? driveSpeed.top : referenceBlockBottomLeft.top
-    anchors.bottomMargin: styler.themePaddingLarge
-    border.width: 0.7*styler.themePaddingLarge
-    border.color: "red"
-    color: "white"
+    x: driveSpeed.visible ? driveSpeed.x + driveSpeed.width * 0.68 : Math.round(styler.themePaddingMedium * 0.9)
+    y: driveSpeed.visible ? driveSpeed.y - height * 0.42 : referenceBlockBottomLeft.y - height - styler.themePaddingMedium * 1.2
     height: width
-    radius: width/2
-    width: Math.round(Math.max(limit.width,limit.height) + 1.6*styler.themePaddingLarge + styler.themePaddingSmall)
+    width: Math.round(styler.themePaddingMedium * (driveSpeed.visible ? 3.9 : 4.8))
     visible: {
         if (app.modalDialog) return false;
         if (app.conf.showSpeedLimit==="never" || !(app.mode === modes.navigate || app.mode === modes.followMe))
@@ -43,30 +32,38 @@ Rectangle {
         }
         return limit.text.length > 0
     }
-    z: 400
+    z: 401
+
+    Rectangle {
+        anchors.fill: parent
+        border.color: "#e53935"
+        border.width: Math.round(sign.width * 0.13)
+        color: "white"
+        radius: width / 2
+        layer.enabled: true
+        layer.effect: DropShadow {
+            color: "#000000"
+            opacity: 0.3
+            radius: 8
+            samples: 17
+            verticalOffset: 2
+        }
+    }
 
     Text {
         id: limit
         anchors.centerIn: parent
-        color: "black"
+        color: "#111111"
         font.bold: true
-        font.family: "sans-serif"
-        font.pixelSize: styler.themeFontSizeLarge
-        style: Text.Outline
-        styleColor: "white"
+        font.family: styler.themeFontFamilyHeading
+        font.pixelSize: Math.round(sign.width * (text.length > 2 ? 0.34 : 0.42))
         text: {
-            // Update speed limit in user's preferred units.
+            // speed limit in m/s, shown in the user's units
             if (driveSpeed.limit <= 0)
                 return "";
-
-            // speed limit in m/s
-            if (app.conf.units === "american") {
-                return "%1".arg(Math.round(driveSpeed.limit * 2.23694))
-            } else if (app.conf.units === "british") {
-                return "%1".arg(Math.round(driveSpeed.limit * 2.23694))
-            } else {
-                return "%1".arg(Math.round(driveSpeed.limit * 3.6))
-            }
+            if (app.conf.units === "american" || app.conf.units === "british")
+                return "%1".arg(Math.round(driveSpeed.limit * 2.23694));
+            return "%1".arg(Math.round(driveSpeed.limit * 3.6));
         }
     }
 }

@@ -15,8 +15,8 @@ Rectangle {
     color: app.mode === modes.navigatePost ? styler.accent : "#e5484d"
     height: styler.themeItemSizeSmall * 0.85
     radius: height / 2
-    visible: !hidden && (app.mode === modes.navigate || app.mode === modes.navigatePost ||
-                         app.mode === modes.followMe)
+    // while navigating, the End button in the trip sheet does this
+    visible: !hidden && (app.mode === modes.navigatePost || app.mode === modes.followMe)
     width: label.implicitWidth + 2 * styler.themePaddingLarge * 1.5
     y: parent.height - referenceBlockBottom.height - height - styler.themePaddingLarge * 1.5
     z: 900

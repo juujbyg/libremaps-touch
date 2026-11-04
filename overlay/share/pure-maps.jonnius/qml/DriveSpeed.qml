@@ -1,7 +1,8 @@
 /* -*- coding: utf-8-unix -*-
  *
- * Drive speed bubble: current speed in a ring, as in popular driving apps.
- * The ring turns red when the known street limit is exceeded.
+ * LibreMaps: current speed, bottom left while navigating.
+ * A round bubble that turns red and pulses when over the known limit.
+ * The limit itself is a sign on the bubble's corner (SpeedLimit.qml).
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -10,22 +11,19 @@
  */
 
 import QtQuick 2.0
+import QtGraphicalEffects 1.0
 
-Rectangle {
+Item {
     id: bubble
     anchors.left: parent.left
-    anchors.leftMargin: styler.themePaddingLarge
+    anchors.leftMargin: Math.round(styler.themePaddingMedium * 0.9)
     anchors.bottom: referenceBlockBottomLeft.top
-    anchors.bottomMargin: styler.themePaddingLarge
-    border.color: over ? "#ff3b30" : styler.accent
-    border.width: Math.max(3, Math.round(width*0.06))
-    color: styler.hudBg
+    anchors.bottomMargin: styler.themePaddingMedium * 1.2
     height: width
-    radius: width/2
     visible: !app.modalDialog && gps.speedValid &&
              (app.mode === modes.navigate || app.mode === modes.followMe ||
               app.mode === modes.navigatePost)
-    width: Math.round(styler.themeIconSizeLarge*1.1)
+    width: Math.round(styler.themePaddingMedium * 6.2)
     z: 400
 
     // street limit in m/s, when the map matching source knows it
@@ -33,24 +31,48 @@ Rectangle {
     property bool over: limit > 0 && gps.speed > limit*1.03
     property real factor: (app.conf.units === "american" || app.conf.units === "british") ? 2.23694 : 3.6
 
+    Rectangle {
+        id: disc
+        anchors.fill: parent
+        color: bubble.over ? "#e53935" : styler.hudBg
+        radius: width / 2
+        layer.enabled: true
+        layer.effect: DropShadow {
+            color: "#000000"
+            opacity: 0.3
+            radius: 10
+            samples: 21
+            verticalOffset: 2
+        }
+        Behavior on color { ColorAnimation { duration: 250 } }
+
+        SequentialAnimation on scale {
+            loops: Animation.Infinite
+            running: bubble.over
+            NumberAnimation { to: 1.06; duration: 500; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 1.0;  duration: 500; easing.type: Easing.InOutSine }
+            onRunningChanged: if (!running) disc.scale = 1.0
+        }
+    }
+
     Column {
         anchors.centerIn: parent
-        spacing: 0
+        anchors.verticalCenterOffset: bubble.width * 0.02
+        spacing: -bubble.width * 0.04
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            color: bubble.over ? "#ff3b30" : styler.hudText
+            color: bubble.over ? "white" : styler.hudText
             font.bold: true
-            font.family: "sans-serif"
-            font.pixelSize: Math.round(bubble.width*0.40)
+            font.family: styler.themeFontFamilyHeading
+            font.pixelSize: Math.round(bubble.width * 0.4)
             text: Math.round(gps.speed * bubble.factor)
         }
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            color: styler.hudMuted
-            font.family: "sans-serif"
-            font.pixelSize: Math.round(bubble.width*0.15)
+            color: bubble.over ? "white" : styler.hudMuted
+            font.pixelSize: Math.round(bubble.width * 0.16)
             text: bubble.factor > 3 ? app.tr("km/h") : app.tr("mph")
         }
     }
