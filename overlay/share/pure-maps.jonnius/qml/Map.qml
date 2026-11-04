@@ -457,7 +457,22 @@ MapboxMap {
         // Set center and zoom so that the whole route is visible.
         map.autoCenter = false;
         map.autoRotate = false;
-        map.fitView(app.navigator.route, true);
+        // fitView ignores the side margins and puts the route right on the
+        // screen edges, so fit a box padded by 10% on every side instead.
+        var route = app.navigator.route;
+        if (!route || route.length < 2) {
+            map.fitView(route, true);
+            return;
+        }
+        var s = 90, n = -90, w = 180, e = -180;
+        for (var i = 0; i < route.length; i++) {
+            var c = route[i];
+            s = Math.min(s, c.latitude); n = Math.max(n, c.latitude);
+            w = Math.min(w, c.longitude); e = Math.max(e, c.longitude);
+        }
+        var dy = Math.max((n - s) * 0.1, 0.0005), dx = Math.max((e - w) * 0.1, 0.0005);
+        map.fitView([QtPositioning.coordinate(s - dy, w - dx),
+                      QtPositioning.coordinate(n + dy, e + dx)], true);
     }
 
     function initIcons() {

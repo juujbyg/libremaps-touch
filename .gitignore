@@ -8,3 +8,4 @@ deploy.sh
 __pycache__/
 *.click
 release/
+docs/*.preview.png

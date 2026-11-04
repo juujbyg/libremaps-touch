@@ -86,7 +86,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             color: styler.hudMuted
             elide: Text.ElideRight
-            text: app.tr("Distance: %1  ·  Time: %2").arg(app.navigator.totalDist).arg(app.navigator.totalTime)
+            text: "%1  ·  %2".arg(app.navigator.totalDist).arg(app.navigator.totalTime)
         }
         Item {
             id: editBtn
