@@ -1,0 +1,11 @@
+{
+  "attribution": {
+    "Valhalla (FOSSGIS)": "https://valhalla.openstreetmap.de/",
+    "Transitous": "https://transitous.org/",
+    "© OpenStreetMap": "https://www.openstreetmap.org/copyright"
+  },
+  "_description": "Walk, bike, car, scooter, taxi, bus and public transport without API keys",
+  "_modes": ["car", "bicycle", "foot", "transit"],
+  "name": "LibreMaps",
+  "profiles": ["mixed", "online"]
+}

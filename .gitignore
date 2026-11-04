@@ -1,0 +1,10 @@
+orig/
+build/
+shots/
+harness/
+preview/
+ph.sh
+deploy.sh
+__pycache__/
+*.click
+release/

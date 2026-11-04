@@ -1,0 +1,9 @@
+{
+  "attribution": {
+    "© OpenStreetMap contributors": "https://www.openstreetmap.org/copyright",
+    "Overpass API": "https://overpass-api.de/"
+  },
+  "_description": "Places near you from OpenStreetMap, no account or key",
+  "name": "OpenStreetMap places",
+  "profiles": ["mixed", "online", "HERE"]
+}
