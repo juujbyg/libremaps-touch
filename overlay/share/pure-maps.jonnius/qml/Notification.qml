@@ -22,7 +22,7 @@ import "platform"
 Rectangle {
     id: rect
     anchors.top: referenceBlockTop.bottom
-    anchors.topMargin: styler.themePaddingLarge + (searchBar.visible ? searchBar.height + styler.themePaddingLarge : 0)
+    anchors.topMargin: styler.themePaddingLarge + (searchBar.visible ? searchBar.fullHeight + styler.themePaddingLarge : 0)
     anchors.horizontalCenter: parent.horizontalCenter
     color: styler.blockBg
     height: label.height + 2*padding

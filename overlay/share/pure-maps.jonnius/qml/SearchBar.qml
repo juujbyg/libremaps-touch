@@ -21,6 +21,9 @@ Item {
     visible: app.mode === modes.explore && !app.modalDialog && !app.infoPanelOpen
     z: 900
 
+    // the bar plus the shortcut chips below it, for things placed under both
+    readonly property real fullHeight: height + chipsFlick.anchors.topMargin + chipsFlick.height
+
     // pressed feedback for the whole bar
     scale: searchMouse.pressed || menuMouse.pressed || dirMouse.pressed ? 0.985 : 1.0
     Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
@@ -180,20 +183,36 @@ Item {
     }
 
     function searchNearby(type) {
-        var pg = app.pushMain(Qt.resolvedUrl("NearbyPage.qml"));
+        // Set these at creation, so the radius menu shows the same value. The
+        // radius must be one of NearbyPage's radiusValues (about 2 km).
+        var pg = app.pushMain(Qt.resolvedUrl("NearbyPage.qml"), {
+            "queryType": type,
+            "radius": app.conf.units === "metric" ? 2000 : 1609
+        });
         if (!pg) return;
-        pg.queryType = type;
-        pg.radius = 3000;
         pendingNearby.page = pg;
+        pendingNearby.tries = 0;
         pendingNearby.restart();
     }
 
-    // give the Nearby page a moment to open, then run the search for the user
+    // Run the search for the user once the Nearby page is open. Its results
+    // page is attached only when the page becomes active, which takes longer
+    // on a busy phone, so keep checking for up to 5 s.
     Timer {
         id: pendingNearby
-        interval: 400
+        interval: 250
+        repeat: true
         property var page: null
-        onTriggered: if (page && page.canNavigateForward) app.pages.navigateForward()
+        property int tries: 0
+        onTriggered: {
+            tries++;
+            if (!page || app.pages.ps.currentItem !== page || tries > 20) {
+                stop();
+            } else if (app.pages.nextPage() && page.canNavigateForward) {
+                stop();
+                app.pages.navigateForward();
+            }
+        }
     }
 
     // directions: amber circle with a turn arrow
