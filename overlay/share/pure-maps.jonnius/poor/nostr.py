@@ -195,22 +195,92 @@ def _event_id(ev):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def sign_event(kind, tags, content="", sk_hex=None, created_at=None):
+def pow_bits(id_hex):
+    """Leading zero bits of an event id (NIP-13 difficulty)."""
+    n = 0
+    for ch in id_hex:
+        v = int(ch, 16)
+        if v == 0:
+            n += 4
+            continue
+        return n + (4 - v.bit_length())
+    return n
+
+
+def _mine(ev, bits):
+    """NIP-13: add a nonce tag and search for an id with `bits` leading zero
+    bits. Hashes a fixed prefix once and only the nonce and suffix per try."""
+    marker = "\x00NONCE\x00"
+    tags = [t for t in ev["tags"] if not (t and t[0] == "nonce")]
+    ev["tags"] = tags + [["nonce", marker, str(bits)]]
+    raw = json.dumps([0, ev["pubkey"], ev["created_at"], ev["kind"], ev["tags"], ev["content"]],
+                     separators=(",", ":"), ensure_ascii=False)
+    marker_json = json.dumps(marker, ensure_ascii=False)[1:-1]
+    prefix, suffix = raw.split(marker_json)
+    base = hashlib.sha256(prefix.encode("utf-8"))
+    suffix = suffix.encode("utf-8")
+    full, rest = divmod(bits, 8)
+    limit = 1 << (8 - rest)
+    zeros = bytes(full)
+    n = 0
+    while True:
+        h = base.copy()
+        h.update(str(n).encode() + suffix)
+        d = h.digest()
+        if d[:full] == zeros and (rest == 0 or d[full] < limit):
+            ev["tags"][-1][1] = str(n)
+            return d.hex()
+        n += 1
+
+
+def sign_event(kind, tags, content="", sk_hex=None, created_at=None, pow=0):
     """Return a signed event. Without a key, a fresh one-use key is made,
-    so events can't be linked to each other."""
+    so events can't be linked to each other. With pow > 0, the event carries
+    NIP-13 proof of work of that many bits, so forging many events costs time."""
     sk_hex = sk_hex or make_key()
     ev = {"pubkey": public_key(sk_hex),
           "created_at": int(created_at or time.time()),
           "kind": int(kind),
-          "tags": tags,
+          "tags": [list(t) for t in tags],
           "content": content}
-    ev["id"] = _event_id(ev)
+    ev["id"] = _mine(ev, pow) if pow > 0 else _event_id(ev)
     ev["sig"] = schnorr_sign(bytes.fromhex(ev["id"]), sk_hex).hex()
     return ev
 
 
+def well_formed(ev):
+    """Shape and types of an event from a relay, before trusting any field."""
+    if not isinstance(ev, dict):
+        return False
+    for k, ln in (("id", 64), ("pubkey", 64), ("sig", 128)):
+        v = ev.get(k)
+        if not isinstance(v, str) or len(v) != ln:
+            return False
+        try:
+            bytes.fromhex(v)
+        except ValueError:
+            return False
+    for k in ("created_at", "kind"):
+        v = ev.get(k)
+        if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v < 2**40:
+            return False
+    if not isinstance(ev.get("content"), str) or len(ev["content"]) > 4096:
+        return False
+    tags = ev.get("tags")
+    if not isinstance(tags, list) or len(tags) > 64:
+        return False
+    for t in tags:
+        if not isinstance(t, list) or not t or len(t) > 8:
+            return False
+        if not all(isinstance(x, str) and len(x) <= 256 for x in t):
+            return False
+    return True
+
+
 def verify_event(ev):
     try:
+        if not well_formed(ev):
+            return False
         if _event_id(ev) != ev["id"]:
             return False
         return schnorr_verify(bytes.fromhex(ev["id"]), ev["pubkey"], bytes.fromhex(ev["sig"]))
@@ -272,8 +342,13 @@ class WebSocket:
         if accept not in head:
             raise ConnectionError("bad Sec-WebSocket-Accept")
 
-    def _read(self, n):
+    def _read(self, n, deadline=None):
         while len(self.buf) < n:
+            if deadline is not None:
+                left = deadline - time.time()
+                if left <= 0:
+                    raise socket.timeout("message took too long")
+                self.sock.settimeout(left)
             chunk = self.sock.recv(65536)
             if not chunk:
                 raise ConnectionError("closed")
@@ -309,21 +384,30 @@ class WebSocket:
     def send(self, text):
         self._send_frame(0x1, text.encode("utf-8"))
 
-    def recv(self):
-        """Return the next text message, or None when the server closes."""
+    MAX_MESSAGE = 1024 * 1024
+
+    def recv(self, deadline=None):
+        """Return the next text message, or None when the server closes.
+        A message (all its fragments together) may be at most MAX_MESSAGE
+        bytes and must arrive before the deadline (a time.time() value)."""
         parts = []
+        total = 0
         while True:
-            b1, b2 = self._read(2)
+            b1, b2 = self._read(2, deadline)
             opcode = b1 & 0x0F
             n = b2 & 0x7F
             if n == 126:
-                n = struct.unpack(">H", self._read(2))[0]
+                n = struct.unpack(">H", self._read(2, deadline))[0]
             elif n == 127:
-                n = struct.unpack(">Q", self._read(8))[0]
-            if n > 4 * 1024 * 1024:
-                raise ConnectionError("frame too large")
-            mask = self._read(4) if b2 & 0x80 else None
-            data = self._read(n)
+                n = struct.unpack(">Q", self._read(8, deadline))[0]
+            if opcode < 0x8:
+                total += n
+                if total > self.MAX_MESSAGE:
+                    raise ConnectionError("message too large")
+            elif n > 125:
+                raise ConnectionError("bad control frame")
+            mask = self._read(4, deadline) if b2 & 0x80 else None
+            data = self._read(n, deadline)
             if mask:
                 data = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
             if opcode == 0x9:
@@ -376,7 +460,7 @@ def publish(event, relays, timeout=8):
             ws.send(json.dumps(["EVENT", event], ensure_ascii=False))
             deadline = time.time() + timeout
             while time.time() < deadline:
-                msg = ws.recv()
+                msg = ws.recv(deadline)
                 if msg is None:
                     return (False, "closed")
                 data = json.loads(msg)
@@ -393,9 +477,11 @@ def publish(event, relays, timeout=8):
     return out
 
 
-def query(filters, relays, timeout=8, limit_per_relay=500):
+def query(filters, relays, timeout=8, limit_per_relay=500, min_pow=0):
     """Ask the relays for events matching the filters (a list of dicts).
-    Returns verified events, without duplicates."""
+    Returns verified events, without duplicates. Events with less than
+    min_pow bits of proof of work are dropped before the (slow) signature
+    check."""
     sub = secrets.token_hex(6)
 
     def work(url):
@@ -404,17 +490,21 @@ def query(filters, relays, timeout=8, limit_per_relay=500):
         try:
             ws.send(json.dumps(["REQ", sub] + list(filters)))
             deadline = time.time() + timeout
-            while time.time() < deadline and len(got) < limit_per_relay:
-                msg = ws.recv()
-                if msg is None:
-                    break
-                data = json.loads(msg)
-                if not data:
-                    continue
-                if data[0] == "EVENT" and len(data) > 2:
-                    got.append(data[2])
-                elif data[0] in ("EOSE", "CLOSED"):
-                    break
+            try:
+                while time.time() < deadline and len(got) < limit_per_relay:
+                    msg = ws.recv(deadline)
+                    if msg is None:
+                        break
+                    data = json.loads(msg)
+                    if not isinstance(data, list) or not data:
+                        continue
+                    if data[0] == "EVENT" and len(data) > 2:
+                        got.append(data[2])
+                    elif data[0] in ("EOSE", "CLOSED"):
+                        break
+            except (OSError, ValueError):
+                # slow, oversized or garbled: keep what arrived before it
+                pass
             try:
                 ws.send(json.dumps(["CLOSE", sub]))
             except Exception:
@@ -427,6 +517,10 @@ def query(filters, relays, timeout=8, limit_per_relay=500):
         if isinstance(r, Exception):
             continue
         for ev in r:
-            if isinstance(ev, dict) and ev.get("id") not in seen and verify_event(ev):
+            if not well_formed(ev) or ev["id"] in seen:
+                continue
+            if min_pow and pow_bits(ev["id"]) < min_pow:
+                continue
+            if verify_event(ev):
                 seen[ev["id"]] = ev
     return list(seen.values())

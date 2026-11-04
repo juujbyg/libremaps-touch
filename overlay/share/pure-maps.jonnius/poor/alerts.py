@@ -44,6 +44,17 @@ RELAYS = ["wss://relay.damus.io", "wss://nos.lol",
 LIFETIME = {"police": 45*60, "camera": 45*60, "accident": 60*60,
             "hazard": 60*60, "jam": 30*60, "closed": 3*60*60}
 REPORT_TYPES = tuple(LIFETIME)
+# confirmations keep a report up, but never past this many lifetimes
+MAX_LIFETIMES = 3
+
+# NIP-13 proof of work on every report and vote. Keys are one-use, so they
+# can't stop one person posting many fake votes; making each event cost
+# work can (about 0.3 s on a PC and a few seconds on a phone at 18 bits).
+POW_BITS = 18
+
+# memory bounds for what relays send
+MAX_REPORTS = 3000
+MAX_VOTES_PER_REPORT = 200
 
 DGT_URL = "https://nap.dgt.es/datex2/v3/dgt/SituationPublication/datex2_v37.xml"
 DGT_MAX_AGE = 5*60
@@ -62,7 +73,7 @@ _state = {
     "dgt": [],           # parsed DGT incidents, whole country
     "dgt_time": 0,
     "community": {},     # id -> alert
-    "votes": {},         # report id -> {vote event id: (up, created)}
+    "votes": {},         # report id -> {voter pubkey: (up, created)}
     "dismissed": set(),  # report ids this phone said are gone
     "last": [],
 }
@@ -231,52 +242,84 @@ def _tag(ev, name):
     return None
 
 
+def _number(text, low, high):
+    """A finite float within [low, high] from a tag value, or None."""
+    try:
+        v = float(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(v) or not low <= v <= high:
+        return None
+    return v
+
+
+def _merge_one(ev, now):
+    # events come from strangers: nostr.query has checked the signature, but
+    # the shape and every value are still checked before use
+    if not nostr.well_formed(ev) or nostr.pow_bits(ev["id"]) < POW_BITS:
+        return
+    if _tag(ev, "t") != TOPIC or ev["kind"] != KIND:
+        return
+    created = ev["created_at"]
+    if created > now + 300 or created < now - 24*3600:
+        return
+    vote = _tag(ev, "vote")
+    if vote in ("up", "down"):
+        rid = _tag(ev, "e")
+        if not rid or len(rid) != 64:
+            return
+        votes = _state["votes"].setdefault(rid, {})
+        if ev["pubkey"] not in votes and len(votes) >= MAX_VOTES_PER_REPORT:
+            return
+        # one vote per key; a newer one from the same key replaces it
+        old = votes.get(ev["pubkey"])
+        if old is None or old[1] < created:
+            votes[ev["pubkey"]] = (vote == "up", created)
+        return
+    kind = _tag(ev, "alert")
+    if kind not in LIFETIME:
+        return
+    lat = _number(_tag(ev, "lat"), -90, 90)
+    lon = _number(_tag(ev, "lon"), -180, 180)
+    if lat is None or lon is None:
+        return
+    heading = _number(_tag(ev, "heading"), 0, 360)
+    if ev["id"] not in _state["community"] and len(_state["community"]) >= MAX_REPORTS:
+        return
+    _state["community"][ev["id"]] = {
+        "id": ev["id"], "source": "community", "type": kind,
+        "lat": lat, "lon": lon, "created": created, "expires": 0,
+        "road": "", "km": "", "town": "", "dest": "", "detail": "",
+        "up": 0, "down": 0, "heading": int(heading) % 360 if heading is not None else -1}
+
+
 def _merge_community(events):
     now = time.time()
     with _lock:
         for ev in events:
-            if _tag(ev, "t") != TOPIC:
-                continue
-            created = int(ev.get("created_at", 0))
-            if created > now + 300:
-                continue
-            vote = _tag(ev, "vote")
-            if vote in ("up", "down"):
-                rid = _tag(ev, "e")
-                if rid:
-                    _state["votes"].setdefault(rid, {})[ev["id"]] = (vote == "up", created)
-                continue
-            kind = _tag(ev, "alert")
-            if kind not in LIFETIME:
-                continue
             try:
-                lat = float(_tag(ev, "lat"))
-                lon = float(_tag(ev, "lon"))
-            except (TypeError, ValueError):
+                _merge_one(ev, now)
+            except Exception:
+                # one bad event must not drop the others
                 continue
-            try:
-                heading = int(float(_tag(ev, "heading") or -1))
-            except ValueError:
-                heading = -1
-            _state["community"][ev["id"]] = {
-                "id": ev["id"], "source": "community", "type": kind,
-                "lat": lat, "lon": lon, "created": created, "expires": 0,
-                "road": "", "km": "", "town": "", "dest": "", "detail": "",
-                "up": 0, "down": 0, "heading": heading}
 
 
 def _community_visible():
     """Reports still standing: within their lifetime since the report or the
-    last confirmation, and not voted down."""
+    last confirmation (but never past MAX_LIFETIMES), and not voted down."""
     now = time.time()
     out = []
     with _lock:
         for rid, a in list(_state["community"].items()):
             votes = _state["votes"].get(rid, {}).values()
+            life = LIFETIME[a["type"]]
+            # only votes cast after the report and within its longest life count
+            votes = [(up, c) for up, c in votes
+                     if a["created"] - 60 <= c <= a["created"] + MAX_LIFETIMES * life]
             ups = [c for up, c in votes if up]
             downs = [c for up, c in votes if not up]
             last = max([a["created"]] + ups)
-            expires = last + LIFETIME[a["type"]]
+            expires = min(last + life, a["created"] + MAX_LIFETIMES * life)
             if now > expires:
                 if now > expires + 3600:
                     del _state["community"][rid]
@@ -287,6 +330,12 @@ def _community_visible():
                 continue
             b = dict(a, up=len(ups), down=len(downs), expires=expires)
             out.append(b)
+        # forget votes on reports that are gone
+        for rid in list(_state["votes"]):
+            if rid not in _state["community"]:
+                cs = [c for _, c in _state["votes"][rid].values()]
+                if not cs or max(cs) < now - 6*3600 or len(_state["votes"]) > 2 * MAX_REPORTS:
+                    del _state["votes"][rid]
     return out
 
 
@@ -314,13 +363,14 @@ def _work():
             try:
                 since = int(time.time()) - 4*3600
                 events = nostr.query([{"kinds": [KIND], "#g": _cells(points), "since": since}],
-                                     RELAYS, timeout=8)
+                                     RELAYS, timeout=8, min_pow=POW_BITS)
                 _merge_community(events)
             except Exception as e:
                 errors.append("relays: %s" % e)
             result += [a for a in _community_visible() if _in_bbox(a["lat"], a["lon"], box)]
         with _lock:
             _state["last"] = result
+            _state["last_box"] = box if points else None
         pyotherside.send("alerts.updated", result, "; ".join(errors))
         with _lock:
             if not _state["again"]:
@@ -342,9 +392,14 @@ def refresh(points):
 
 
 def current():
-    """The last list sent, again (for a page that opens later)."""
+    """The last area's alerts again, with this phone's own reports and votes
+    since then (no network)."""
     with _lock:
-        return list(_state["last"])
+        box = _state.get("last_box")
+        if box is None:
+            return list(_state["last"])
+        official = [a for a in _state["last"] if a["source"] != "community"]
+    return official + [a for a in _community_visible() if _in_bbox(a["lat"], a["lon"], box)]
 
 
 def _cell_tags(lat, lon):
@@ -364,15 +419,16 @@ def report(kind, lat, lon, heading=-1):
         ["client", "LibreMaps"]]
     if heading is not None and heading >= 0:
         tags.append(["heading", str(int(heading) % 360)])
-    ev = nostr.sign_event(KIND, tags, "")
-    _merge_community([ev])
 
     def send():
+        # proof of work takes seconds on a phone: keep it off the call queue
+        ev = nostr.sign_event(KIND, tags, "", pow=POW_BITS)
+        _merge_community([ev])
         res = nostr.publish(ev, RELAYS, timeout=8)
         ok = sum(1 for r in res.values() if r[0])
         pyotherside.send("alerts.reported", kind, ok, len(RELAYS))
     threading.Thread(target=send, daemon=True).start()
-    return ev["id"]
+    return True
 
 
 def vote(report_id, up):
@@ -387,10 +443,9 @@ def vote(report_id, up):
     tags = [["t", TOPIC], ["vote", "up" if up else "down"], ["e", report_id]] + \
         _cell_tags(a["lat"], a["lon"]) + [
         ["expiration", str(now + LIFETIME[a["type"]] + 3600)], ["client", "LibreMaps"]]
-    ev = nostr.sign_event(KIND, tags, "")
-    _merge_community([ev])
-
     def send():
+        ev = nostr.sign_event(KIND, tags, "", pow=POW_BITS)
+        _merge_community([ev])
         res = nostr.publish(ev, RELAYS, timeout=8)
         ok = sum(1 for r in res.values() if r[0])
         pyotherside.send("alerts.voted", report_id, bool(up), ok)

@@ -53,7 +53,11 @@ Item {
             alerts._official = list || [];
             alerts.rebuild();
         });
+        py.setHandler("alerts.voted", function(rid, up, ok) {
+            alerts.refreshSoon();
+        });
         py.setHandler("alerts.reported", function(kind, ok, total) {
+            alerts.refreshSoon();
             if (ok > 0)
                 notification.flash(app.tr("Reported. Thanks for helping other drivers!"), "alerts", 4);
             else
@@ -294,8 +298,8 @@ Item {
         }
         var c = gps.coordinate;
         py.call("poor.alerts.report",
-                [kind, c.latitude, c.longitude, gps.directionValid ? gps.direction : -1],
-                function() { alerts.refreshSoon(); });
+                [kind, c.latitude, c.longitude, gps.directionValid ? gps.direction : -1], null);
+        notification.flash(app.tr("Sending report…"), "alerts", 3);
     }
 
     function vote(a, up) {
@@ -303,7 +307,7 @@ Item {
         py.call("poor.alerts.vote", [a.id, up], null);
         passed = null;
         notification.flash(up ? app.tr("Thanks, confirmed") : app.tr("Thanks, it will be removed for others too"), "alerts", 3);
-        refreshSoon();
+        refreshSoon();   // a dismissed report hides at once; the vote itself follows
     }
 
     function refreshSoon() { soon.restart(); }
