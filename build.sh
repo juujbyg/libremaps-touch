@@ -16,6 +16,9 @@ rsync -a overlay/ build/pkg/
 # rename the share dir the binary looks for
 mv build/pkg/share/$OLD build/pkg/share/$NEW
 rsync -a --remove-source-files build/pkg/share/$OLD/ build/pkg/share/$NEW/ 2>/dev/null || true
+# the patched binary loads translations/$NEW-<locale>.qm: those come from
+# overlay (i18n/build.py) and include Pure Maps' own strings, so drop the old ones
+rm -f build/pkg/share/$NEW/translations/$OLD-*.qm
 python3 -I - <<PY
 import pathlib
 p = pathlib.Path("build/pkg/lib/aarch64-linux-gnu/bin/pure-maps")

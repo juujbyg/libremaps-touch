@@ -56,6 +56,25 @@ package, which is built from the unmodified Pure Maps 3.5.0 sources:
 config folder so the app can be tested without touching the screen. Don't install dev builds
 for normal use.
 
+## Translations
+
+LibreMaps follows the phone's language. It ships every language Pure Maps has: Czech, Chinese
+(Simplified), Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Norwegian
+Bokmål, Polish, Portuguese (Brazil), Russian, Slovak, Slovenian, Spanish and Swedish. Each one
+also covers LibreMaps' own strings. Friulian has Pure Maps' strings only.
+
+- `i18n/strings.json` lists LibreMaps' own strings. Regenerate it with
+  `python3 -I i18n/extract.py` after adding text to the QML.
+- `i18n/tr/<language>.json` maps each of those strings to its translation. Corrections from
+  native speakers are very welcome.
+- `i18n/build.py` merges Pure Maps' translations, the same entries with the app name changed,
+  and `i18n/tr/`. It writes `overlay/.../translations/libremaps.juujbyg-<locale>.qm` and the
+  Python catalogues in `overlay/.../locale/`. It needs `pyside6-lrelease`. Its output is
+  committed, so building the app doesn't need PySide6.
+
+LibreMaps' own strings were translated with the help of an AI model and haven't been reviewed by
+native speakers yet.
+
 ## License
 
 GNU General Public License, version 3 or later. See `LICENSE`. The native code is Pure Maps

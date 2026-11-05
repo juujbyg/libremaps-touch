@@ -29,7 +29,8 @@ PagePL {
         enabled: true
         engine: "tester"
         gender: "female"
-        language: "en"
+        // the phone's language; the engine falls back from es_ES to es
+        language: Qt.locale().name
     }
 
     Column {
@@ -109,7 +110,7 @@ PagePL {
                 font.pixelSize: styler.themeFontSizeSmall
                 text: voice.active ?
                           app.tr("Spoken directions use the voice engine on this phone (%1).").arg(voice.currentEngine) :
-                          app.tr("No voice engine found for English.")
+                          app.tr("No voice engine found for this language.")
             }
             Row {
                 x: styler.themeHorizontalPageMargin
@@ -173,7 +174,7 @@ PagePL {
 
     function say() {
         if (!voice.active) return;
-        var txt = "Okay, turn left onto Calle Mayor. In 200 meters, you'll arrive at your destination.";
+        var txt = app.tr("Okay, turn left onto Calle Mayor. In 200 meters, you'll arrive at your destination.");
         voice.prepare(txt);
         voice.play(txt);
     }
