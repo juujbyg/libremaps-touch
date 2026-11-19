@@ -84,11 +84,26 @@ def _migrate():
 def _load():
     _migrate()
     _split_overview()
+    _refresh_styles()
     try:
         with open(_regions_path(), encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return []
+
+
+def _refresh_styles():
+    """Rewrite the offline styles when an update shipped a newer map look."""
+    mine = os.path.join(poor.DATA_HOME_DIR, "maps", "drive_offline_day.json")
+    if not os.path.exists(mine):
+        return   # nothing saved yet; the first download writes them
+    try:
+        shipped = max(os.path.getmtime(os.path.join(poor.DATA_DIR, "maps", "drive_%s.json" % m))
+                      for m in ("night", "day"))
+        if shipped > os.path.getmtime(mine):
+            write_styles()
+    except OSError:
+        pass
 
 
 def _save(regions):

@@ -278,9 +278,88 @@ def build(mode):
     for layer in style["layers"]:
         if layer["id"].startswith("poi_"):
             layer["minzoom"] = max(layer.get("minzoom", 0), 16.5)
-    # drop building 3D-ish top layer opacity weirdness
+    add_osm_detail(style, mode)
     style["name"] = "Waze " + mode
     return style
+
+
+# Countryside detail in openstreetmap.org's colours (day) and quiet night
+# equivalents. OpenMapTiles has these classes from zoom 9, but Bright draws
+# only wood and grass, which left farmland regions blank.
+RURAL = {
+    "day": {"farmland": "#eef0d5", "orchard": "#aedfa3", "vineyard": "#aedfa3",
+            "meadow": "#cdebb0", "grassland": "#cdebb0", "grass": "#cdebb0",
+            "scrub": "#c8d7ab", "heath": "#d6d99f", "wetland": "#d6e5c9",
+            "rock": "#eee5dc", "allotments": "#c9e1bf"},
+    "night": {"farmland": "#1a2634", "orchard": "#173026", "vineyard": "#173026",
+              "meadow": "#183428", "grassland": "#183428", "grass": "#183428",
+              "scrub": "#1a3027", "heath": "#222c25", "wetland": "#1a2c30",
+              "rock": "#262a30", "allotments": "#183428"},
+}
+TRACK = {"day": "#996600", "night": "#7d6b52"}
+MUNICIPAL = {"day": "#c7a3c7", "night": "#34445c"}
+
+
+def zoom_curve(*stops, kind=("exponential", 1.2)):
+    return ["interpolate", list(kind), ["zoom"]] + [v for s in stops for v in s]
+
+
+def add_osm_detail(style, mode):
+    layers = style["layers"]
+    ids = [l["id"] for l in layers]
+    rural = RURAL[mode]
+    colour = ["match", ["get", "subclass"]]
+    for sub in ("orchard", "vineyard", "meadow", "grassland", "scrub", "heath", "allotments"):
+        colour += [sub, rural[sub]]
+    colour += [["match", ["get", "class"],
+                "farmland", rural["farmland"], "wetland", rural["wetland"],
+                "rock", rural["rock"], rural["grass"]]]
+    # under the town landuse, so fields never cover streets' blocks
+    layers.insert(ids.index("landcover-glacier") + 1, {
+        "id": "landcover-rural", "type": "fill", "source": "openmaptiles",
+        "source-layer": "landcover",
+        "filter": ["match", ["get", "class"], ["farmland", "grass", "wetland", "rock"], True, False],
+        "paint": {"fill-color": colour, "fill-opacity": 1, "fill-antialias": False}})
+    layers[:] = [l for l in layers if l["id"] != "landcover-grass"]
+    by_id = {l["id"]: l for l in layers}
+
+    # minor roads from zoom 12 (where the tiles start carrying them): a thin
+    # grey line first, white with a casing from 13.5, as on openstreetmap.org
+    minor_only = ["match", ["get", "class"], ["minor", "service"], True, False]
+    for i in ("highway-minor", "highway-minor-casing"):
+        f = by_id[i]["filter"]
+        by_id[i]["filter"] = [x if not (isinstance(x, list) and x[:2] == ["match", ["get", "class"]]
+                                        and "track" in x[2]) else minor_only for x in f]
+    m = by_id["highway-minor"]["paint"]
+    m["line-width"] = zoom_curve((11.8, 0), (12, 0.8), (13.5, 1.6), (14, 2.5), (20, 11.5))
+    if mode == "day":
+        m["line-color"] = ["interpolate", ["linear"], ["zoom"], 13, "#b5b5b5", 13.6, "#ffffff"]
+    by_id["highway-minor-casing"]["paint"]["line-opacity"] = ["interpolate", ["linear"], ["zoom"], 13.3, 0, 13.8, 1]
+
+    # tracks: brown dashes
+    layers.insert([l["id"] for l in layers].index("highway-path") + 1, {
+        "id": "highway-track", "type": "line", "source": "openmaptiles",
+        "source-layer": "transportation", "minzoom": 12,
+        "filter": ["all", ["==", ["get", "class"], "track"], ["!=", ["get", "brunnel"], "tunnel"]],
+        "layout": {"line-join": "round"},
+        "paint": {"line-color": TRACK[mode], "line-opacity": 0.85,
+                  "line-dasharray": [3, 1.5],
+                  "line-width": zoom_curve((12, 0.7), (14, 1.2), (16, 2), (20, 4))}})
+
+    # streams from zoom 12
+    for i in ("waterway-stream-canal", "waterway-stream-canal-intermittent"):
+        by_id[i]["paint"]["line-width"] = zoom_curve((12, 0.5), (14, 1), (20, 6), kind=("exponential", 1.3))
+
+    # municipal boundaries, faint dashes
+    layers.insert([l["id"] for l in layers].index("boundary_3"), {
+        "id": "boundary_8", "type": "line", "source": "openmaptiles",
+        "source-layer": "boundary", "minzoom": 10,
+        "filter": ["all", ["==", ["typeof", ["get", "admin_level"]], "number"],
+                   [">=", ["get", "admin_level"], 7], ["<=", ["get", "admin_level"], 8],
+                   ["!=", ["get", "maritime"], 1]],
+        "layout": {"line-join": "round"},
+        "paint": {"line-color": MUNICIPAL[mode], "line-dasharray": [3, 2],
+                  "line-width": zoom_curve((10, 0.6), (14, 1.2), kind=("linear",))}})
 
 
 def meta(mode, style):
