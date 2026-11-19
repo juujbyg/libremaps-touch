@@ -57,9 +57,21 @@ PageEmptyPL {
     SearchBar { id: searchBar }
     Notification { id: notification }
     InfoPanel { id: infoPanel }
+    PlaceButtons { id: placeButtons }
+
+    Connections {
+        // once a route is shown or driven, search results leave the map (saved places stay),
+        // so old nearby pins don't litter the route like stray markers
+        target: app
+        onModeChanged: {
+            if (app.mode === modes.exploreRoute || app.mode === modes.navigate)
+                pois.clear(false);
+        }
+    }
     Poi { id: pois }
     RemorsePopupPL { id: remorse; z: 1000 }
     ScaleBar { id: scaleBar }
+    SoundButton { id: soundButton }
     SpeedLimit { id: speedLimit }
     StreetName { id: streetName }
     ZoomLevel { id: zoomLevel }

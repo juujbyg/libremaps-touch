@@ -17,10 +17,10 @@ Item {
     id: bubble
     anchors.left: parent.left
     anchors.leftMargin: Math.round(styler.themePaddingMedium * 0.9)
-    anchors.bottom: referenceBlockBottomLeft.top
+    anchors.bottom: alertBanner.shown ? alertBanner.top : referenceBlockBottomLeft.top
     anchors.bottomMargin: styler.themePaddingMedium * 1.2
     height: width
-    visible: !app.modalDialog && gps.speedValid &&
+    visible: !app.modalDialog &&
              (app.mode === modes.navigate || app.mode === modes.followMe ||
               app.mode === modes.navigatePost)
     width: Math.round(styler.themePaddingMedium * 6.2)
@@ -34,13 +34,15 @@ Item {
     Rectangle {
         id: disc
         anchors.fill: parent
-        color: bubble.over ? "#e53935" : styler.hudBg
+        border.color: bubble.over ? styler.danger : "#52525b"
+        border.width: Math.max(2, Math.round(bubble.width * 0.045))
+        color: styler.navDisc
         radius: width / 2
         layer.enabled: true
         layer.effect: DropShadow {
             color: "#000000"
             opacity: 0.3
-            radius: 10
+            radius: 12
             samples: 21
             verticalOffset: 2
         }
@@ -60,19 +62,19 @@ Item {
         anchors.verticalCenterOffset: bubble.width * 0.02
         spacing: -bubble.width * 0.04
 
-        Text {
+        RollingNumber {
             anchors.horizontalCenter: parent.horizontalCenter
-            color: bubble.over ? "white" : styler.hudText
-            font.bold: true
-            font.family: styler.themeFontFamilyHeading
-            font.pixelSize: Math.round(bubble.width * 0.4)
-            text: Math.round(gps.speed * bubble.factor)
+            color: bubble.over ? styler.danger : "white"
+            pixelSize: Math.round(bubble.width * 0.38)
+            text: String(gps.speedValid ? Math.round(gps.speed * bubble.factor) : 0)
+            weight: Font.Bold
         }
-
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            color: bubble.over ? "white" : styler.hudMuted
-            font.pixelSize: Math.round(bubble.width * 0.16)
+            color: bubble.over ? styler.danger : styler.hudDarkMuted
+            font.family: styler.themeFontFamily
+            font.pixelSize: Math.round(bubble.width * 0.15)
+            font.weight: Font.Medium
             text: bubble.factor > 3 ? app.tr("km/h") : app.tr("mph")
         }
     }

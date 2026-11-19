@@ -47,9 +47,9 @@ Item {
     property real gap: Math.round(u * 0.65)
 
     // colours: the card stays dark in day and night, for contrast on any map
-    readonly property color cardBg:   "#1f2430"
+    readonly property color cardBg:   styler.hudDark
     readonly property color cardText: "#ffffff"
-    readonly property color cardMuted: "#a9b0bd"
+    readonly property color cardMuted: styler.hudDarkMuted
 
     // distance to the turn in metres, parsed from the formatted string
     property real meters: toMeters(manDist)
@@ -70,7 +70,9 @@ Item {
         anchors.leftMargin: block.gap
         anchors.top: parent.top
         anchors.topMargin: block.gap
-        color: cardMouse.pressed ? "#2c3343" : block.cardBg
+        border.color: styler.hudDarkRaised
+        border.width: 1
+        color: cardMouse.pressed ? styler.hudDarkRaised : block.cardBg
         height: Math.max(bubble.height + 2.4 * block.u, textColumn.height + 2.4 * block.u)
         radius: block.u * 1.6
         width: app.portrait ? parent.width - 2 * block.gap : Math.min(parent.width * 0.48, block.u * 26)
@@ -91,13 +93,13 @@ Item {
             onClicked: if (!block.arrived) app.showNavigationPages()
         }
 
-        // the turn, in an amber bubble
+        // the turn: a big white arrow
         Rectangle {
             id: bubble
             anchors.left: parent.left
-            anchors.leftMargin: block.u * 1.2
+            anchors.leftMargin: block.u * 0.8
             anchors.verticalCenter: parent.verticalCenter
-            color: styler.amber
+            color: "transparent"
             height: block.u * 6
             radius: block.u * 1.4
             width: height
@@ -108,10 +110,10 @@ Item {
                 smooth: true
                 source: {
                     var name = block.arrived ? "flag" : (block.notify ? (block.icon || "flag") : "away-from-route");
-                    return "icons/navigation/%1-black.svg".arg(name);
+                    return "icons/navigation/%1-white.svg".arg(name);
                 }
-                sourceSize.height: parent.height * 0.74
-                sourceSize.width: parent.height * 0.74
+                sourceSize.height: parent.height * 0.86
+                sourceSize.width: parent.height * 0.86
             }
 
             Rectangle {
@@ -120,7 +122,7 @@ Item {
                 anchors.horizontalCenterOffset: -parent.width * 0.08
                 anchors.verticalCenter: parent.bottom
                 anchors.verticalCenterOffset: -parent.height * 0.08
-                border.color: styler.amber
+                border.color: "white"
                 border.width: block.u * 0.15
                 color: block.cardBg
                 height: parent.height * 0.42
@@ -150,7 +152,7 @@ Item {
         Rectangle {
             id: ripple
             anchors.centerIn: bubble
-            border.color: styler.amber
+            border.color: styler.navSky
             border.width: block.u * 0.25
             color: "transparent"
             height: bubble.height
@@ -162,7 +164,7 @@ Item {
         Column {
             id: textColumn
             anchors.left: bubble.right
-            anchors.leftMargin: block.u * 1.2
+            anchors.leftMargin: block.u * 0.6
             anchors.right: parent.right
             anchors.rightMargin: block.u * 1.2
             anchors.verticalCenter: parent.verticalCenter
@@ -175,30 +177,30 @@ Item {
                 // distance: big number, small unit
                 spacing: block.u * 0.35
                 visible: !block.arrived && block._dist[0].length > 0
-                Text {
+                RollingNumber {
                     id: distNumber
-                    color: block.near ? styler.amber : block.cardText
-                    font.bold: true
-                    font.family: styler.themeFontFamilyHeading
-                    font.pixelSize: block.u * 4.6
+                    color: block.near ? styler.navSky : block.cardText
+                    pixelSize: block.u * 4.6
                     text: block._dist[0]
-                    Behavior on color { ColorAnimation { duration: 250 } }
+                    weight: Font.Bold
                 }
                 Text {
-                    anchors.baseline: distNumber.baseline
-                    color: block.near ? styler.amber : block.cardMuted
-                    font.bold: true
+                    anchors.bottom: distNumber.bottom
+                    anchors.bottomMargin: block.u * 0.75
+                    color: block.near ? styler.navSky : block.cardMuted
                     font.family: styler.themeFontFamilyHeading
                     font.pixelSize: block.u * 2.1
+                    font.weight: Font.DemiBold
                     text: block._dist[1]
                 }
             }
 
             Text {
-                // street, or the instruction when there is no street name
-                color: block.cardText
+                // street (sky blue), or the instruction when there is no street name
+                color: !block.arrived && block.notify && block.street.length > 0 ? styler.navStreet : block.cardText
                 elide: Text.ElideRight
-                font.bold: !block.arrived && block.street.length > 0
+                font.family: styler.themeFontFamily
+                font.weight: !block.arrived && block.street.length > 0 ? Font.DemiBold : Font.Normal
                 font.pixelSize: block.arrived ? block.u * 2.7 : block.u * 2.15
                 maximumLineCount: 2
                 text: {
@@ -223,7 +225,7 @@ Item {
             visible: block.notify && !block.arrived
             Rectangle {
                 anchors.bottom: parent.bottom
-                color: styler.amber
+                color: styler.navSky
                 height: parent.height
                 width: parent.width * block.approach
                 Behavior on width { NumberAnimation { duration: 600; easing.type: Easing.OutCubic } }
@@ -238,7 +240,7 @@ Item {
         anchors.leftMargin: block.u * 0.6
         anchors.top: card.bottom
         anchors.topMargin: -block.u * 0.2
-        color: "#2c3343"
+        color: styler.hudDarkRaised
         height: block.u * 3.3
         radius: block.u * 0.7
         visible: block.notify && !block.arrived && block.nextIcon.length > 0
@@ -253,6 +255,7 @@ Item {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 color: block.cardMuted
+                font.family: styler.themeFontFamily
                 font.pixelSize: block.u * 1.4
                 text: app.tr("Then")
             }
@@ -266,8 +269,9 @@ Item {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 color: block.cardText
-                font.bold: true
+                font.family: styler.themeFontFamily
                 font.pixelSize: block.u * 1.4
+                font.weight: Font.DemiBold
                 text: block.nextManDist
                 visible: text.length > 0
             }

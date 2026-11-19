@@ -103,6 +103,7 @@ MapboxMap {
         readonly property string pixel:         "pure-image-pixel"
         readonly property string poi:           "pure-image-poi"
         readonly property string poiBookmarked: "pure-image-poi-bookmarked"
+        readonly property string streetPill:    "libremaps-image-street-pill"
     }
 
     readonly property var layers: QtObject {
@@ -115,6 +116,8 @@ MapboxMap {
         readonly property string poisSelected:    "pure-layer-pois-selected"
         readonly property string route:           "pure-layer-route"
         readonly property string routeOutline:    "pure-layer-route-outline"
+        readonly property string streetLabels:    "libremaps-layer-street-labels"
+        readonly property string streetLabelsLeft: "libremaps-layer-street-labels-left"
     }
 
     readonly property var sources: QtObject {
@@ -124,6 +127,8 @@ MapboxMap {
         readonly property string poisBookmarked: "pure-source-pois-bookmarked"
         readonly property string poisSelected:   "pure-source-pois-selected"
         readonly property string route:          "pure-source-route"
+        readonly property string streetLabels:   "libremaps-source-street-labels"
+        readonly property string streetLabelsLeft: "libremaps-source-street-labels-left"
     }
 
     Behavior on bearing {
@@ -286,6 +291,7 @@ MapboxMap {
             updateManeuvers();
         }
         onLocationsChanged: updateLocations()
+        onStreetTagsChanged: updateStreetLabels()
     }
 
     Connections {
@@ -368,11 +374,11 @@ MapboxMap {
 
     function configureLayers() {
         // Configure layer for selected POI markers.
-        map.setPaintProperty(map.layers.poisSelected, "circle-opacity", 0);
+        // the open place: a soft red glow under the pin's tip
+        map.setPaintProperty(map.layers.poisSelected, "circle-color", "#ef4444");
+        map.setPaintProperty(map.layers.poisSelected, "circle-opacity", 0.25);
         map.setPaintProperty(map.layers.poisSelected, "circle-radius", 8 * map.mapToQtPixelRatio / map.devicePixelRatio * styler.themePixelRatio);
-        map.setPaintProperty(map.layers.poisSelected, "circle-stroke-color", styler.route);
-        map.setPaintProperty(map.layers.poisSelected, "circle-stroke-opacity", styler.routeOpacity);
-        map.setPaintProperty(map.layers.poisSelected, "circle-stroke-width", 6 * map.mapToQtPixelRatio / map.devicePixelRatio * styler.themePixelRatio);
+        map.setPaintProperty(map.layers.poisSelected, "circle-stroke-width", 0);
         // Configure layer for non-bookmarked POI markers.
         map.setLayoutProperty(map.layers.pois, "icon-allow-overlap", true);
         map.setLayoutProperty(map.layers.pois, "icon-anchor", "bottom");
@@ -408,10 +414,15 @@ MapboxMap {
         // Configure layer for route casing.
         map.setLayoutProperty(map.layers.routeOutline, "line-cap", "round");
         map.setLayoutProperty(map.layers.routeOutline, "line-join", "round");
-        map.setPaintProperty(map.layers.routeOutline, "line-color", styler.route);
+        map.setPaintProperty(map.layers.routeOutline, "line-color", styler.routeCasing || styler.route);
         map.setPaintProperty(map.layers.routeOutline, "line-gap-width", 16 * map.mapToQtPixelRatio);
         map.setPaintProperty(map.layers.routeOutline, "line-opacity", 1 - (1-styler.routeOpacity)/2);
-        map.setPaintProperty(map.layers.routeOutline, "line-width", 4 * map.mapToQtPixelRatio);
+        map.setPaintProperty(map.layers.routeOutline, "line-width", 3 * map.mapToQtPixelRatio);
+        // Configure layer for street tags: white names on purple tags at the turns.
+        // Two layers: tags to the right of their turn, and tags to the left of it for turns
+        // near the right edge of the screen (see updateStreetLabels).
+        map.configureStreetTags(map.layers.streetLabels, false);
+        map.configureStreetTags(map.layers.streetLabelsLeft, true);
         // Configure layer for active maneuver markers.
         map.setPaintProperty(map.layers.maneuvers, "circle-color", styler.maneuver);
         map.setPaintProperty(map.layers.maneuvers, "circle-pitch-alignment", "map");
@@ -438,7 +449,7 @@ MapboxMap {
         map.setLayoutProperty(map.layers.locations, "text-field", "{name}");
         map.setLayoutProperty(map.layers.locations, "text-optional", true);
         map.setLayoutProperty(map.layers.locations, "text-font", '["Noto Sans Regular"]');
-        map.setLayoutProperty(map.layers.locations, "text-size", 12);
+        map.setLayoutProperty(map.layers.locations, "text-size", 11);
         map.setPaintProperty(map.layers.locations, "text-color", styler.itemFg);
         map.setPaintProperty(map.layers.locations, "text-halo-color", styler.itemBg);
         map.setPaintProperty(map.layers.locations, "text-halo-width", 2);
@@ -479,13 +490,17 @@ MapboxMap {
         var suffix = "";
         if (styler.position) suffix = "-" + styler.position;
         var iconSize = 35 * styler.themePixelRatio;
-        map.addImagePath(map.images.locationDest, Qt.resolvedUrl(app.getIcon("icons/marker/flag-dest" + suffix, true)), iconSize);
-        map.addImagePath(map.images.locationEnd, Qt.resolvedUrl(app.getIcon("icons/marker/flag-end" + suffix, true)), iconSize);
-        map.addImagePath(map.images.locationStart, Qt.resolvedUrl(app.getIcon("icons/marker/flag-start" + suffix, true)), iconSize);
-        map.addImagePath(map.images.locationWay, Qt.resolvedUrl(app.getIcon("icons/marker/flag-way" + suffix, true)), iconSize);
-        map.addImagePath(map.images.poi, Qt.resolvedUrl(app.getIcon("icons/marker/marker-stroked" + suffix, true)), iconSize);
-        map.addImagePath(map.images.poiBookmarked, Qt.resolvedUrl(app.getIcon("icons/marker/marker" + suffix, true)), iconSize);
+        // route ends as pins in the same family as the place pins: white start, dark
+        // chequered finish, amber stops
+        map.addImagePath(map.images.locationDest, Qt.resolvedUrl("icons/route-stop.svg"), iconSize * 1.1);
+        map.addImagePath(map.images.locationEnd, Qt.resolvedUrl("icons/route-end.svg"), iconSize * 1.2);
+        map.addImagePath(map.images.locationStart, Qt.resolvedUrl("icons/route-start.svg"), iconSize * 1.0);
+        map.addImagePath(map.images.locationWay, Qt.resolvedUrl("icons/route-stop.svg"), iconSize * 0.9);
+        // places: Waze-style filled pins, red, and amber once saved
+        map.addImagePath(map.images.poi, Qt.resolvedUrl("icons/place-pin.svg"), iconSize * 1.2);
+        map.addImagePath(map.images.poiBookmarked, Qt.resolvedUrl("icons/place-pin-saved.svg"), iconSize * 1.2);
         map.addImagePath(map.images.pixel, Qt.resolvedUrl("icons/pixel.png"));
+        map.addImagePath(map.images.streetPill, Qt.resolvedUrl("icons/street-pill.svg"));
     }
 
     function initLayers() {
@@ -508,6 +523,10 @@ MapboxMap {
         // Add transparent 1x1 pixels at maneuver points to knock out road shields etc.
         // that would otherwise overlap with the above maneuver and node circles.
         map.addLayer(map.layers.dummies, {"type": "symbol", "source": map.sources.maneuvers});
+        // the left-side tags go below, so the map places them last: a flipped tag shows only
+        // where it doesn't hide a neighbour (and a tag that won't fit either side isn't cut)
+        map.addLayer(map.layers.streetLabelsLeft, {"type": "symbol", "source": map.sources.streetLabelsLeft});
+        map.addLayer(map.layers.streetLabels, {"type": "symbol", "source": map.sources.streetLabels});
         map.addLayer(map.layers.locations, {"type": "symbol", "source": map.sources.locations});
     }
 
@@ -531,6 +550,8 @@ MapboxMap {
         map.addSourceLine(map.sources.route, []);
         //map.addSourcePoints(map.sources.locations, []);
         map.addSourcePoints(map.sources.maneuvers, []);
+        map.addSourcePoints(map.sources.streetLabels, []);
+        map.addSourcePoints(map.sources.streetLabelsLeft, []);
     }
 
     function setBasemap() {
@@ -667,11 +688,13 @@ MapboxMap {
             else
                 symbol = map.images.locationWay;
 
+            // no "Origin"/"Final destination" captions: the pins say it; the finish shows
+            // the place's own name when it has a short one
             var name;
             if (l.origin)
-                name = app.tr("Origin");
+                name = "";
             else if (l.final)
-                name = app.tr("Final destination");
+                name = l.text && l.text.length <= 28 && !/^-?\d/.test(l.text) ? l.text : "";
             else if (l.arrived)
                 name = app.tr("✓");
             else {
@@ -692,6 +715,69 @@ MapboxMap {
         var coords = app.navigator.maneuvers.coordinates();
         var names  = app.navigator.maneuvers.names();
         map.updateSourcePoints(map.sources.maneuvers, coords, names);
+        map.updateStreetLabels();
+    }
+
+    function streetTagSize() {
+        // the map draws twice as big while navigating; keep the tags readable but small
+        return (map.scale > 1 ? 11 : 9) / Math.max(1, map.scale);
+    }
+
+    onScaleChanged: {
+        map.setLayoutProperty(map.layers.streetLabels, "text-size", map.streetTagSize());
+        map.setLayoutProperty(map.layers.streetLabelsLeft, "text-size", map.streetTagSize());
+    }
+
+    function configureStreetTags(layer, toLeft) {
+        // white street names on purple tags, beside the turn point
+        var anchor = toLeft ? "bottom-right" : "bottom-left";
+        map.setLayoutProperty(layer, "icon-image", map.images.streetPill);
+        map.setLayoutProperty(layer, "icon-text-fit", "both");
+        map.setLayoutProperty(layer, "icon-text-fit-padding", "[4, 8, 4, 8]");  // arrays go as JSON text
+        map.setLayoutProperty(layer, "icon-anchor", anchor);
+        map.setLayoutProperty(layer, "text-anchor", anchor);
+        map.setLayoutProperty(layer, "text-offset", toLeft ? "[-0.6, -0.5]" : "[0.6, -0.5]");
+        map.setLayoutProperty(layer, "icon-offset", "[0, 0]");
+        map.setLayoutProperty(layer, "text-field", "{name}");
+        map.setLayoutProperty(layer, "text-font", '["Noto Sans Regular"]');
+        map.setLayoutProperty(layer, "text-size", map.streetTagSize());
+        map.setLayoutProperty(layer, "text-max-width", 30);
+        map.setPaintProperty(layer, "text-color", "#ffffff");
+    }
+
+    // the map moved: tags may now fit better on the other side of their turn
+    onCenterChanged: if (app.navigator && app.navigator.streetTags.length) tagSides.restart()
+    onZoomLevelChanged: if (app.navigator && app.navigator.streetTags.length) tagSides.restart()
+    onBearingChanged: if (app.navigator && app.navigator.streetTags.length) tagSides.restart()
+    property var _tagSides: Timer {
+        id: tagSides
+        interval: 300
+        onTriggered: map.updateStreetLabels()
+    }
+
+    function updateStreetLabels() {
+        // Purple tags with the names of the streets the route turns onto (Waze style). A tag
+        // goes right of its turn, or left of it when it would run off the right edge. The
+        // map can't tell where a coordinate lands on screen, so project it here (flat, from
+        // the centre, metres per pixel and bearing; good enough to pick a side).
+        var tags = app.navigator ? app.navigator.streetTags : [];
+        var right = {"coords": [], "names": []}, left = {"coords": [], "names": []};
+        var mpp = map.metersPerPixel > 0 ? map.metersPerPixel : 1;
+        var b = map.bearing * Math.PI / 180;
+        var lat0 = map.center.latitude, lon0 = map.center.longitude;
+        var cx = map.width * (map.margins ? (map.margins.left + map.margins.right) / 2 : 0.5);
+        var charPx = map.streetTagSize() / Math.max(0.01, map.mapToQtPixelRatio) * 0.47;
+        for (var i = 0; i < tags.length; i++) {
+            var dE = (tags[i].x - lon0) * 111320 * Math.cos(lat0 * Math.PI / 180);
+            var dN = (tags[i].y - lat0) * 110540;
+            var x = cx + (dE * Math.cos(b) - dN * Math.sin(b)) / mpp;
+            var w = (String(tags[i].name).length + 2) * charPx;  // measured: ~387 px for 18 letters
+            var side = (x + w < map.width - 8 || x - w < 8 && map.width - x > x) ? right : left;
+            side.coords.push(QtPositioning.coordinate(tags[i].y, tags[i].x));
+            side.names.push(tags[i].name);
+        }
+        map.updateSourcePoints(map.sources.streetLabels, right.coords, right.names);
+        map.updateSourcePoints(map.sources.streetLabelsLeft, left.coords, left.names);
     }
 
     function updateMargins() {

@@ -29,7 +29,7 @@ MenuDrawerPL {
     titleIcon: "pure-maps"
     pageMenu: PageMenuPL {
         PageMenuItemPL {
-            iconName: styler.iconAbout
+            iconName: styler.iconAbout  // header action: a system icon, see platform/IconPL.qml
             text: app.tr("About LibreMaps")
             onClicked: app.pushMain(Qt.resolvedUrl("AboutPage.qml"))
         }
@@ -39,7 +39,7 @@ MenuDrawerPL {
     property real switchLeftMargin: styler.themeHorizontalPageMargin + styler.themePaddingLarge + styler.themePaddingSmall
 
     MenuDrawerItemPL {
-        iconName: styler.iconStop
+        iconName: styler.icon("square")
         text: app.tr("Stop following the movement")
         visible: app.mode === modes.followMe
         onClicked: {
@@ -50,34 +50,34 @@ MenuDrawerPL {
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconSearch
+        iconName: styler.icon("search")
         text: app.tr("Search")
         visible: false  // the search bar does this
         onClicked: app.pushMain(Qt.resolvedUrl("GeocodePage.qml"))
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconNavigate
+        iconName: styler.icon("route")
         text: app.tr("Navigation")
         visible: false  // the arrow in the search bar does this
         onClicked: app.pushMain(Qt.resolvedUrl("RoutePage.qml"))
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconNearby
+        iconName: styler.icon("map-pin")
         text: app.tr("Nearby venues")
         onClicked: app.pushMain(Qt.resolvedUrl("NearbyPage.qml"))
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconFavorite
+        iconName: styler.icon("bookmark")
         text: app.tr("Bookmarks")
         onClicked: app.pushMain(Qt.resolvedUrl("PoiPage.qml"))
     }
 
     MenuDrawerItemPL {
         enabled: gps.coordinateValid
-        iconName: styler.iconShare
+        iconName: styler.icon("share")
         text: gps.coordinateValid ? app.tr("Share current position") : app.tr("Share current position (not ready)")
         onClicked: {
             if (!gps.coordinateValid) return;
@@ -91,43 +91,34 @@ MenuDrawerPL {
         }
     }
 
-    MenuDrawerItemPL {
-        iconName: styler.iconMaps
-        text: app.conf.basemapLight === "night" ? app.tr("Switch to day map") : app.tr("Switch to night map")
-        onClicked: {
-            app.conf.set("basemap_auto_light", "none");
-            app.conf.set("basemap_light", app.conf.basemapLight === "night" ? "day" : "night");
-            py.call_sync("poor.app.basemap._find_map", []);
-            app.showMap();
-        }
-    }
+    ThemeSwitch { }
 
     MenuDrawerItemPL {
-        iconName: styler.iconMaps
+        iconName: styler.icon("layers")
         text: app.tr("Maps")
         onClicked: app.pushMain(Qt.resolvedUrl("BasemapPage.qml"))
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconPreferences
+        iconName: styler.icon("sliders")
         text: app.tr("Customize")
         onClicked: app.pushMain(Qt.resolvedUrl("CustomizePage.qml"))
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconMaps
+        iconName: styler.icon("download")
         text: app.tr("Offline maps")
         onClicked: app.pushMain(Qt.resolvedUrl("OfflinePage.qml"))
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconAbout
+        iconName: styler.icon("info")
         text: app.tr("Map credits")
         onClicked: app.pushMain(Qt.resolvedUrl("AttributionPage.qml"))
     }
 
     MenuDrawerItemPL {
-        iconName: styler.iconPreferences
+        iconName: styler.icon("settings")
         text: app.tr("Preferences")
         onClicked: app.pushMain(Qt.resolvedUrl("PreferencesPage.qml"), {}, true)
     }

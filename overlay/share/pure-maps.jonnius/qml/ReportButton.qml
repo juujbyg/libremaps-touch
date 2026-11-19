@@ -25,7 +25,8 @@ Item {
     y: {
         if (app.mode === modes.explore)
             return centerButton.y + (centerButton.height - centerButton.width) / 2 - height - u * 0.4;
-        return parent.height - referenceBlockBottom.height - height - u * 1.4;
+        var bottom = alertBanner.shown ? alertBanner.y : parent.height - referenceBlockBottom.height;
+        return bottom - height - u * 1.4;
     }
     z: 500
 
@@ -33,42 +34,47 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        // navy, so it doesn't look like the amber hazard icons on the map
-        color: mouse.pressed ? "#3a4256" : "#1f2430"
-        border.color: styler.amber
-        border.width: Math.max(2, Math.round(width * 0.04))
-        radius: width / 2
-        scale: mouse.pressed ? 0.92 : 1
+        color: mouse.pressed ? styler.navYellowPressed : styler.navYellow
+        radius: styler.radiusLg
+        scale: mouse.pressed ? 0.94 : 1
         Behavior on scale { NumberAnimation { duration: 90 } }
         layer.enabled: true
         layer.effect: DropShadow {
             color: "#000000"
-            opacity: 0.3
-            radius: 10
-            samples: 21
+            opacity: 0.22
+            radius: 12
+            samples: 25
             verticalOffset: 2
         }
 
-        // a warning triangle with a plus: "add a report"
-        Canvas {
+        Image {
             anchors.centerIn: parent
-            height: parent.height * 0.56
+            height: parent.height * 0.5
+            smooth: true
+            source: Qt.resolvedUrl("icons/ui/triangle-alert-ink.svg")
+            sourceSize.height: height * 2
+            sourceSize.width: height * 2
             width: height
-            onPaint: {
-                var c = getContext("2d"), w = width, h = height;
-                c.reset();
-                c.fillStyle = styler.amber;
-                c.lineJoin = "round";
-                c.beginPath();
-                c.moveTo(w * 0.5, h * 0.06);
-                c.lineTo(w * 0.97, h * 0.9);
-                c.lineTo(w * 0.03, h * 0.9);
-                c.closePath();
-                c.fill();
-                c.fillStyle = "#1f2430";
-                var t = w * 0.1;
-                c.fillRect(w * 0.5 - t / 2, h * 0.4, t, h * 0.38);
-                c.fillRect(w * 0.31, h * 0.59 - t / 2, w * 0.38, t);
+        }
+        // "add a report"
+        Rectangle {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: -parent.width * 0.08
+            border.color: styler.navYellow
+            border.width: Math.max(2, Math.round(parent.width * 0.04))
+            color: styler.ink
+            height: parent.width * 0.36
+            radius: height / 2
+            width: height
+            Image {
+                anchors.centerIn: parent
+                height: parent.height * 0.62
+                smooth: true
+                source: Qt.resolvedUrl("icons/ui/plus-white.svg")
+                sourceSize.height: height * 2
+                sourceSize.width: height * 2
+                width: height
             }
         }
     }

@@ -28,48 +28,46 @@ Item {
     scale: searchMouse.pressed || menuMouse.pressed || dirMouse.pressed ? 0.985 : 1.0
     Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
 
+    // a command-bar card: white, thin grey border, soft shadow
     Rectangle {
         id: pill
         anchors.fill: parent
-        color: styler.itemBg
-        radius: height / 2
+        border.color: styler.border
+        border.width: 1
+        color: styler.surface
+        radius: styler.radiusLg
         layer.enabled: true
         layer.effect: DropShadow {
             color: styler.shadowColor
             opacity: styler.shadowOpacity
             radius: styler.shadowRadius
             samples: 1 + radius * 2
+            verticalOffset: 2
         }
     }
 
-    // thin amber rim, so the bar reads as part of the app on any map style
-    Rectangle {
-        anchors.fill: parent
-        color: "transparent"
-        border.color: styler.amber
-        border.width: 1.5
-        opacity: 0.6
-        radius: height / 2
-    }
-
-    // menu: three rounded bars of different length
+    // menu
     Item {
         id: menuArea
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: bar.height
-        Column {
+        Rectangle {
             anchors.centerIn: parent
-            spacing: styler.themePaddingSmall * 1.1
-            Repeater {
-                model: [1.0, 0.68, 0.85]
-                Rectangle {
-                    color: styler.itemFg
-                    height: 3; radius: 1.5
-                    width: styler.themeIconSizeSmall * 0.75 * modelData
-                }
-            }
+            color: menuMouse.pressed ? styler.subtle : "transparent"
+            height: bar.height - 2 * styler.themePaddingMedium
+            radius: styler.radiusMd
+            width: height
+        }
+        Image {
+            anchors.centerIn: parent
+            height: bar.height * 0.4
+            smooth: true
+            source: styler.icon("menu")
+            sourceSize.height: height * 2
+            sourceSize.width: height * 2
+            width: height
         }
         MouseArea {
             id: menuMouse
@@ -81,9 +79,8 @@ Item {
     Rectangle {
         anchors.left: menuArea.right
         anchors.verticalCenter: parent.verticalCenter
-        color: styler.itemFg
+        color: styler.border
         height: bar.height * 0.45
-        opacity: 0.18
         width: 1
     }
 
@@ -101,7 +98,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             height: bar.height * 0.38
             smooth: true
-            source: Qt.resolvedUrl("icons/search-glass.svg")
+            source: styler.icon("search", "muted")
             sourceSize.height: height * 2
             sourceSize.width: height * 2
             width: height
@@ -111,7 +108,7 @@ Item {
             anchors.leftMargin: styler.themePaddingMedium
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            color: styler.themeSecondaryHighlightColor
+            color: styler.muted
             elide: Text.ElideRight
             font.pixelSize: styler.themeFontSizeMedium
             text: app.tr("Search places")
@@ -144,32 +141,49 @@ Item {
 
         Repeater {
             model: [
-                { "label": app.tr("Food"),     "type": "Restaurant" },
-                { "label": app.tr("Coffee"),   "type": "Café" },
-                { "label": app.tr("Fuel"),     "type": "Fuel station" },
-                { "label": app.tr("Pharmacy"), "type": "Pharmacy" },
-                { "label": app.tr("Parking"),  "type": "Parking" }
+                { "label": app.tr("Food"),     "type": "Restaurant",   "icon": "utensils" },
+                { "label": app.tr("Coffee"),   "type": "Café",         "icon": "coffee" },
+                { "label": app.tr("Fuel"),     "type": "Fuel station", "icon": "fuel" },
+                { "label": app.tr("Pharmacy"), "type": "Pharmacy",     "icon": "pill" },
+                { "label": app.tr("Parking"),  "type": "Parking",      "icon": "circle-parking" }
             ]
+            // outline badges with an icon
             delegate: Rectangle {
-                color: chipMouse.pressed ? styler.amberSoft : styler.itemBg
-                border.color: styler.amber
+                color: chipMouse.pressed ? styler.subtle : styler.surface
+                border.color: styler.border
                 border.width: 1
                 height: styler.themeItemSizeSmall * 0.72
                 radius: height / 2
-                width: chipLabel.implicitWidth + 2 * styler.themePaddingLarge
+                width: chipRow.width + 2 * styler.themePaddingLarge
                 layer.enabled: true
                 layer.effect: DropShadow {
                     color: styler.shadowColor
-                    opacity: styler.shadowOpacity * 0.8
-                    radius: styler.shadowRadius * 0.6
+                    opacity: styler.shadowOpacity * 0.7
+                    radius: styler.shadowRadius * 0.5
                     samples: 1 + radius * 2
+                    verticalOffset: 1
                 }
-                LabelPL {
-                    id: chipLabel
+                Row {
+                    id: chipRow
                     anchors.centerIn: parent
-                    color: styler.itemFg
-                    font.pixelSize: styler.themeFontSizeSmall
-                    text: modelData.label
+                    spacing: styler.themePaddingSmall
+                    Image {
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: chipLabel.font.pixelSize * 1.15
+                        smooth: true
+                        source: styler.icon(modelData.icon)
+                        sourceSize.height: height * 2
+                        sourceSize.width: height * 2
+                        width: height
+                    }
+                    LabelPL {
+                        id: chipLabel
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: styler.ink
+                        font.pixelSize: styler.themeFontSizeSmall
+                        font.weight: Font.Medium
+                        text: modelData.label
+                    }
                 }
                 MouseArea {
                     id: chipMouse
@@ -215,7 +229,7 @@ Item {
         }
     }
 
-    // directions: amber circle with a turn arrow
+    // directions: a dark primary button with the route icon
     Item {
         id: dirArea
         anchors.right: parent.right
@@ -224,15 +238,15 @@ Item {
         width: bar.height
         Rectangle {
             anchors.centerIn: parent
-            color: dirMouse.pressed ? styler.amberDark : styler.amber
+            color: dirMouse.pressed ? styler.primaryPressed : styler.primary
             height: bar.height - 2 * styler.themePaddingMedium
-            radius: height / 2
+            radius: styler.radiusMd
             width: height
             Image {
                 anchors.centerIn: parent
-                height: parent.height * 0.55
+                height: parent.height * 0.5
                 smooth: true
-                source: Qt.resolvedUrl("icons/route-arrow.svg")
+                source: styler.icon("route", styler.dark ? "ink" : "white")
                 sourceSize.height: height * 2
                 sourceSize.width: height * 2
                 width: height

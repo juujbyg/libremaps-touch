@@ -128,7 +128,7 @@ DEFAULTS = {
     "voice_friendly": True,
     "voice_gender": "male",
     "voice_style": "calm",
-    "arrow_color": "amber",
+    "arrow_color": "sky",
     "voice_navigation": True,
     "zoom": 12.0,
 }

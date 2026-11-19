@@ -17,19 +17,20 @@
  */
 
 import QtQuick 2.2
+import QtGraphicalEffects 1.0
 import "platform"
 
-Rectangle {
+// Sonner-style toast: a white card with an icon that drops in under the search bar and fades
+// away. Same API as before: flash(text, id, timeout), hold(text, id), clear(id).
+Item {
     id: rect
     anchors.top: referenceBlockTop.bottom
     anchors.topMargin: styler.themePaddingLarge + (searchBar.visible ? searchBar.fullHeight + styler.themePaddingLarge : 0)
     anchors.horizontalCenter: parent.horizontalCenter
-    color: styler.blockBg
-    height: label.height + 2*padding
+    height: card.height
     opacity: currentText ? 1 : 0
-    radius: 0.85 * padding
     visible: !app.modalDialog && label.text
-    width: label.width + 2*padding
+    width: card.width
     z: 400
 
     property string currentText: {
@@ -42,29 +43,67 @@ Rectangle {
     }
     property string lastText
     // Padding on the edges
-    property real   padding: 1.5 * styler.themePaddingMedium
+    property real   padding: 1.4 * styler.themePaddingMedium
     property var    stack: []
-    property real   widthLimit: parent.width / 2
+    property real   widthLimit: parent.width - 4 * styler.themePaddingLarge
+    // drop-in offset, animated with the opacity
+    property real   drop: currentText ? 0 : -styler.themePaddingLarge
 
     Behavior on opacity {
         OpacityAnimator {
-            duration: 200
-            easing.type: Easing.InOutQuad
+            duration: 220
+            easing.type: Easing.OutCubic
             onRunningChanged: if (!currentText && !running) lastText = ''
         }
     }
+    Behavior on drop {
+        NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
+    }
 
-    LabelPL {
-        id: label
-        anchors.centerIn: rect
-        color: styler.themeHighlightColor
-        font.family: styler.themeFontFamily
-        font.pixelSize: styler.themeFontSizeSmall
-        horizontalAlignment: Text.AlignHCenter
-        lineHeight: 1.1
-        text: currentText ? currentText : lastText
-        wrapMode: Text.WordWrap
-        width: Math.min(implicitWidth, rect.widthLimit)
+    Rectangle {
+        id: card
+        border.color: styler.border
+        border.width: 1
+        color: styler.surface
+        height: Math.max(label.height, icon.height) + 2 * rect.padding
+        radius: styler.radiusLg
+        width: icon.width + styler.themePaddingMedium + label.width + 2 * rect.padding
+        y: rect.drop
+        layer.enabled: true
+        layer.effect: DropShadow {
+            color: styler.shadowColor
+            opacity: styler.shadowOpacity
+            radius: styler.shadowRadius
+            samples: 1 + radius * 2
+            verticalOffset: 3
+        }
+
+        Image {
+            id: icon
+            anchors.left: parent.left
+            anchors.leftMargin: rect.padding
+            anchors.verticalCenter: parent.verticalCenter
+            height: styler.themeFontSizeMedium * 1.2
+            smooth: true
+            source: Qt.resolvedUrl("icons/ui/info-muted.svg")
+            sourceSize.height: height * 2
+            sourceSize.width: height * 2
+            width: height
+        }
+
+        LabelPL {
+            id: label
+            anchors.left: icon.right
+            anchors.leftMargin: styler.themePaddingMedium
+            anchors.verticalCenter: parent.verticalCenter
+            color: styler.ink
+            font.pixelSize: styler.themeFontSizeSmall
+            font.weight: Font.Medium
+            lineHeight: 1.1
+            text: currentText ? currentText : lastText
+            wrapMode: Text.WordWrap
+            width: Math.min(implicitWidth, rect.widthLimit - icon.width - styler.themePaddingMedium - 2 * rect.padding)
+        }
     }
 
     Timer {

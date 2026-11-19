@@ -25,6 +25,7 @@ import "platform"
 
 ApplicationWindowPL {
     id: app
+    font.family: styler.themeFontFamily  // Inter for every Controls text in the app
     initialPage: InitPage { }
     menuPageUrl: Qt.resolvedUrl("MenuPage.qml")
     title: app.tr("LibreMaps")

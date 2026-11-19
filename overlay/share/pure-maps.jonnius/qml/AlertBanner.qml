@@ -18,8 +18,8 @@ Item {
     id: banner
     anchors.left: parent.left
     anchors.right: parent.right
-    anchors.top: navigationCurrent.visible ? navigationCurrent.bottom : parent.top
-    anchors.topMargin: navigationCurrent.visible ? 0 : gap
+    anchors.bottom: referenceBlockBottom.top
+    anchors.bottomMargin: gap
     height: card.height
     visible: opacity > 0
     opacity: shown ? 1 : 0
@@ -34,8 +34,8 @@ Item {
 
     Behavior on opacity { NumberAnimation { duration: 220 } }
 
-    // slide in from under the turn card
-    property real slide: shown ? 0 : -u * 2
+    // rise from the trip bar
+    property real slide: shown ? 0 : u * 2
     Behavior on slide { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
     transform: Translate { y: banner.slide }
 
@@ -43,26 +43,35 @@ Item {
         id: card
         anchors.left: parent.left
         anchors.leftMargin: banner.gap
-        color: "white"
-        height: Math.max(icon.height, textCol.height) + 1.6 * banner.u + (banner.asking ? buttons.height + banner.u : 0)
-        radius: banner.u * 1.3
+        border.color: styler.border
+        border.width: 1
+        color: styler.surface
+        height: Math.max(iconTile.height, textCol.height) + 2.4 * banner.u + (banner.asking ? buttons.height + banner.u : 0)
+        radius: styler.radiusLg
         width: app.portrait ? parent.width - 2 * banner.gap : Math.min(parent.width * 0.48, banner.u * 26)
         layer.enabled: true
         layer.effect: DropShadow {
             color: "#000000"
-            opacity: 0.3
-            radius: 12
-            samples: 25
+            opacity: 0.22
+            radius: 14
+            samples: 29
             verticalOffset: 3
         }
-
+        Rectangle {
+            id: iconTile
+            anchors.left: parent.left
+            anchors.leftMargin: banner.u * 1.2
+            anchors.top: parent.top
+            anchors.topMargin: banner.u * 1.2
+            color: styler.subtle
+            height: banner.u * 5
+            radius: styler.radiusMd
+            width: height
+        }
         Image {
             id: icon
-            anchors.left: parent.left
-            anchors.leftMargin: banner.u
-            anchors.top: parent.top
-            anchors.topMargin: banner.u * 0.8
-            height: banner.u * 4
+            anchors.centerIn: iconTile
+            height: banner.u * 3.6
             smooth: true
             source: banner.alert ? alertWatch.iconUrl(banner.alert.type) : ""
             sourceSize.height: height
@@ -72,42 +81,39 @@ Item {
 
         Column {
             id: textCol
-            anchors.left: icon.right
-            anchors.leftMargin: banner.u
-            anchors.right: distLabel.left
-            anchors.rightMargin: banner.u * 0.6
-            anchors.verticalCenter: icon.verticalCenter
+            anchors.left: iconTile.right
+            anchors.leftMargin: banner.u * 1.2
+            anchors.right: parent.right
+            anchors.rightMargin: banner.u * 1.2
+            anchors.verticalCenter: iconTile.verticalCenter
             spacing: banner.u * 0.1
             Text {
-                color: "#1f2430"
+                color: styler.ink
                 elide: Text.ElideRight
-                font.bold: true
-                font.pixelSize: banner.u * 1.55
-                text: banner.asking ? app.tr("%1: still there?").arg(alertWatch.title(banner.alert))
-                                    : alertWatch.title(banner.alert)
+                font.family: styler.themeFontFamily
+                font.pixelSize: banner.u * 1.75
+                font.weight: Font.DemiBold
+                lineHeight: 1.05
+                text: {
+                    if (banner.asking) return app.tr("%1: still there?").arg(alertWatch.title(banner.alert));
+                    var t = alertWatch.title(banner.alert);
+                    if (alertWatch.nextDist < 0) return t;
+                    // "Speed camera  300 m": the distance in bold ink after the name
+                    return t + "&nbsp;&nbsp;<font color='%1'>%2</font>".arg(styler.muted).arg(banner.formatDist(alertWatch.nextDist));
+                }
+                textFormat: Text.StyledText
                 width: parent.width
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2
             }
             Text {
-                color: "#5b6270"
+                color: styler.muted
                 elide: Text.ElideRight
-                font.pixelSize: banner.u * 1.1
+                font.family: styler.themeFontFamily
+                font.pixelSize: banner.u * 1.15
                 text: alertWatch.subtitle(banner.alert)
                 width: parent.width
             }
-        }
-
-        Text {
-            id: distLabel
-            anchors.right: parent.right
-            anchors.rightMargin: banner.u * 1.1
-            anchors.verticalCenter: icon.verticalCenter
-            color: "#1f2430"
-            font.bold: true
-            font.pixelSize: banner.u * 1.9
-            text: !banner.asking && alertWatch.nextDist >= 0 ? banner.formatDist(alertWatch.nextDist) : ""
-            visible: text.length > 0
         }
 
         Row {
@@ -119,18 +125,19 @@ Item {
             visible: banner.asking
 
             Repeater {
-                model: [{"up": true, "label": app.tr("Yes, it's there"), "color": "#2e7d32"},
-                        {"up": false, "label": app.tr("No, it's gone"), "color": "#5b6270"}]
+                model: [{"up": true, "label": app.tr("Yes, it's there"), "color": String(styler.primary)},
+                        {"up": false, "label": app.tr("No, it's gone"), "color": "#71717a"}]
                 Rectangle {
                     color: mouse.pressed ? Qt.darker(modelData.color, 1.2) : modelData.color
                     height: banner.u * 3.6
-                    radius: height / 2
+                    radius: styler.radiusMd
                     width: (card.width - 3 * banner.u) / 2
                     Text {
                         anchors.centerIn: parent
-                        color: "white"
-                        font.bold: true
+                        color: modelData.up ? styler.primaryText : "white"
+                        font.family: styler.themeFontFamily
                         font.pixelSize: banner.u * 1.3
+                        font.weight: Font.Medium
                         text: modelData.label
                     }
                     MouseArea {

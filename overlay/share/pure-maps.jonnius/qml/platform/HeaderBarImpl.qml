@@ -27,6 +27,9 @@ UC.PageHeader {
     id: bar
     height: visible ? implicitHeight : 0
     navigationActions: UC.Action {
+        // iconName lets the system Back (Lomiri Gestures' Alt+Left) find this arrow;
+        // iconSource still decides what is drawn
+        iconName: "back"
         iconSource: styler.iconBack
         onTriggered: app.pages.pop()
     }
@@ -34,11 +37,11 @@ UC.PageHeader {
     width: page.width
     visible: page && (!(page.empty) || app.pages.currentIndex > 0)
 
-    // LibreMaps light header: white bar, ink title and icons, amber hairline
+    // LibreMaps header: surface bar, ink title and icons, a thin border (follows the theme)
     UC.StyleHints {
-        backgroundColor: "#ffffff"
-        dividerColor: "#f4a81d"
-        foregroundColor: "#1f2430"
+        backgroundColor: styler.surface
+        dividerColor: styler.border
+        foregroundColor: styler.ink
     }
 
     property string acceptDescription

@@ -45,9 +45,9 @@ Rectangle {
             anchors.left: parent.left
             anchors.leftMargin: styler.themeHorizontalPageMargin
             anchors.verticalCenter: parent.verticalCenter
-            color: styler.hudText
-            font.bold: true
+            color: styler.ink
             font.pixelSize: styler.themeFontSizeLarge
+            font.weight: Font.DemiBold
             text: app.tr("Directions")
         }
         Item {
@@ -55,13 +55,24 @@ Rectangle {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             height: head.height; width: head.height
-            LabelPL {
+            Rectangle {
                 anchors.centerIn: parent
-                color: styler.hudMuted
-                font.pixelSize: styler.themeFontSizeLarge * 1.4
-                text: "×"
+                color: closeMouse.pressed ? styler.subtle : "transparent"
+                height: parent.height * 0.7
+                radius: styler.radiusMd
+                width: height
+            }
+            Image {
+                anchors.centerIn: parent
+                height: parent.height * 0.36
+                smooth: true
+                source: styler.icon("x")
+                sourceSize.height: height * 2
+                sourceSize.width: height * 2
+                width: height
             }
             MouseArea {
+                id: closeMouse
                 anchors.fill: parent
                 onClicked: {
                     notification.flash(app.tr("Route removed"), "navigationClear");
@@ -79,28 +90,66 @@ Rectangle {
         anchors.top: head.bottom
         height: styler.themeItemSizeSmall
 
-        LabelPL {
+        Row {
             anchors.left: parent.left
             anchors.leftMargin: styler.themeHorizontalPageMargin
-            anchors.right: editBtn.left
             anchors.verticalCenter: parent.verticalCenter
-            color: styler.hudMuted
-            elide: Text.ElideRight
-            text: "%1  ·  %2".arg(app.navigator.totalDist).arg(app.navigator.totalTime)
+            spacing: styler.themePaddingMedium
+            RollingNumber {
+                anchors.verticalCenter: parent.verticalCenter
+                color: styler.ink
+                pixelSize: styler.themeFontSizeLarge
+                text: app.navigator.totalTime
+            }
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                color: styler.borderStrong
+                height: styler.themePaddingSmall * 0.6
+                radius: height / 2
+                width: height
+            }
+            RollingNumber {
+                anchors.verticalCenter: parent.verticalCenter
+                color: styler.muted
+                pixelSize: styler.themeFontSizeMedium
+                text: app.navigator.totalDist
+                weight: Font.Medium
+            }
         }
-        Item {
+        Rectangle {
             id: editBtn
             anchors.right: startBtn.left
+            anchors.rightMargin: styler.themePaddingMedium
             anchors.verticalCenter: parent.verticalCenter
-            height: summary.height; width: editLabel.implicitWidth + 2 * styler.themePaddingLarge
-            LabelPL {
-                id: editLabel
+            border.color: styler.border
+            border.width: 1
+            color: editMouse.pressed ? styler.subtle : styler.surface
+            height: startBtn.height
+            radius: styler.radiusMd
+            width: editRow.width + 2 * styler.themePaddingLarge
+            Row {
+                id: editRow
                 anchors.centerIn: parent
-                color: styler.accentText
-                font.bold: true
-                text: app.tr("Edit")
+                spacing: styler.themePaddingSmall
+                Image {
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: editLabel.font.pixelSize
+                    smooth: true
+                    source: styler.icon("pencil")
+                    sourceSize.height: height * 2
+                    sourceSize.width: height * 2
+                    width: height
+                }
+                LabelPL {
+                    id: editLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: styler.ink
+                    font.weight: Font.Medium
+                    text: app.tr("Edit")
+                }
             }
             MouseArea {
+                id: editMouse
                 anchors.fill: parent
                 onClicked: app.push(Qt.resolvedUrl("RoutePage.qml"))
             }
@@ -110,18 +159,33 @@ Rectangle {
             anchors.right: parent.right
             anchors.rightMargin: styler.themeHorizontalPageMargin
             anchors.verticalCenter: parent.verticalCenter
-            color: styler.accent
+            color: startMouse.pressed ? styler.primaryPressed : styler.primary
             height: summary.height * 0.78
-            radius: height / 2
-            width: startLabel.implicitWidth + 2 * styler.themePaddingLarge
-            LabelPL {
-                id: startLabel
+            radius: styler.radiusMd
+            width: startRow.width + 2 * styler.themePaddingLarge
+            Row {
+                id: startRow
                 anchors.centerIn: parent
-                color: styler.textOnAccent
-                font.bold: true
-                text: app.tr("Start")
+                spacing: styler.themePaddingSmall
+                Image {
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: startLabel.font.pixelSize
+                    smooth: true
+                    source: styler.icon("navigation", styler.dark ? "ink" : "white")
+                    sourceSize.height: height * 2
+                    sourceSize.width: height * 2
+                    width: height
+                }
+                LabelPL {
+                    id: startLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: styler.primaryText
+                    font.weight: Font.Medium
+                    text: app.tr("Start")
+                }
             }
             MouseArea {
+                id: startMouse
                 anchors.fill: parent
                 onClicked: {
                     notification.flash(app.tr("Navigation started"), "navigationStartPause");
@@ -135,9 +199,8 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: summary.bottom
-        color: styler.hudMuted
+        color: styler.border
         height: 1
-        opacity: 0.4
     }
 
     // ---- numbered turns
@@ -161,8 +224,8 @@ Rectangle {
 
             Rectangle {
                 anchors.fill: parent
-                color: styler.accent
-                opacity: turns.active === model.index ? 0.15 : 0
+                color: styler.subtle
+                opacity: turns.active === model.index ? 1 : 0
             }
             Image {
                 id: ico
@@ -182,9 +245,9 @@ Rectangle {
                 anchors.right: dist.left
                 anchors.rightMargin: styler.themePaddingMedium
                 anchors.verticalCenter: parent.verticalCenter
-                color: styler.hudText
+                color: styler.ink
                 font.pixelSize: styler.themeFontSizeSmall
-                text: "<b>" + (model.index + 1) + ".</b> " + model.narrative
+                text: "<font color='" + styler.muted + "'>" + (model.index + 1) + "</font>&nbsp;&nbsp;" + model.narrative
                 textFormat: Text.StyledText
                 wrapMode: Text.WordWrap
             }
@@ -193,17 +256,17 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: styler.themeHorizontalPageMargin
                 anchors.verticalCenter: parent.verticalCenter
-                color: styler.hudMuted
+                color: styler.muted
                 font.pixelSize: styler.themeFontSizeExtraSmall
-                text: model.index < turns.count - 1 ? model.length : ""
+                font.weight: Font.Medium
+                text: model.index < turns.count - 1 && model.length ? model.length : ""
             }
             Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                color: styler.hudMuted
+                color: styler.border
                 height: 1
-                opacity: 0.2
             }
             MouseArea {
                 anchors.fill: parent

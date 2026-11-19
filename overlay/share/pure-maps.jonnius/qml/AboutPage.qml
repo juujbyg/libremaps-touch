@@ -132,7 +132,9 @@ PagePL {
                          "• Search: Photon by Komoot (photon.komoot.io) sees what you type.\n" +
                          "• Routes for walk, bike and car: FOSSGIS Valhalla (valhalla1.openstreetmap.de) sees your start and end points.\n" +
                          "• Public transport: Transitous (api.transitous.org) sees your start and end points.\n" +
-                         "• Places nearby (Food, Coffee, Fuel and the other shortcuts): an Overpass server, or Photon if those fail, sees the area you search.\n" +
+                         "• Places nearby (Food, Coffee, Fuel and the other shortcuts): an Overpass server and Photon (or Nominatim at openstreetmap.org if Photon finds nothing) see the area you search.\n" +
+                         "• Place details (opening hours, phone): Nominatim at openstreetmap.org (or an Overpass server if it has nothing) sees the name and area of the place you open. For fuel stations in Spain, prices and hours come from the Ministry for Ecological Transition (sedeaplicaciones.minetur.gob.es), which is asked for a whole province at a time and so only sees the province.
+" +
                          "• Speed limits: Valhalla sees your position while you drive, if Road alerts is on.\n" +
                          "• Speed cameras: an Overpass server (overpass.kumi.systems, maps.mail.ru or overpass-api.de) sees the outline of your route, if Road alerts is on.\n" +
                          "• Approximate position when GPS has no fix: ipwho.is sees your IP address, if that option is on.\n" +

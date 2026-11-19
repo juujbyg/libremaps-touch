@@ -41,7 +41,9 @@ Item {
     Rectangle {
         id: bg
         anchors.centerIn: parent
-        color: item.pressed ? styler.itemPressed : (item.active ? styler.amber : styler.itemBg)
+        border.color: item.active ? styler.amberDark : styler.border
+        border.width: 1
+        color: item.pressed ? styler.subtle : (item.active ? styler.amber : styler.surface)
         height: wh
         layer.enabled: true
         layer.effect: DropShadow {
@@ -49,9 +51,10 @@ Item {
             opacity: styler.shadowOpacity
             radius: styler.shadowRadius
             samples: 1 + radius*2
+            verticalOffset: 2
         }
         opacity: item.enabled ? 1.0 : 0.75
-        radius: wh/2
+        radius: styler.radiusLg
         width: wh
 
         property real wh: Math.max(button.height, button.width) * 1.4142*(1 + 0.2)

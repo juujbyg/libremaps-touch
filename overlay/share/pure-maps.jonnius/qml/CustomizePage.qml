@@ -12,6 +12,7 @@ PagePL {
     title: app.tr("Customize")
 
     readonly property var arrows: [
+        { key: "sky",      label: app.tr("Sky"),      color: "#33ccff" },
         { key: "amber",    label: app.tr("Amber"),    color: "#f4a81d" },
         { key: "ocean",    label: app.tr("Ocean"),    color: "#1f7ae0" },
         { key: "forest",   label: app.tr("Forest"),   color: "#2e9e5b" },
@@ -66,7 +67,7 @@ PagePL {
                         width: styler.themeItemSizeLarge * 1.05
                         height: styler.themeItemSizeLarge * 1.2
                         radius: styler.themePaddingLarge
-                        color: on ? styler.amberSoft : "#ffffff"
+                        color: on ? styler.amberSoft : styler.surface
                         border.color: on ? styler.amber : styler.themeSecondaryColor
                         border.width: on ? 2 : 1
                         Column {
@@ -122,7 +123,7 @@ PagePL {
                         width: (page.width - 2 * styler.themeHorizontalPageMargin - 2 * styler.themePaddingMedium) / 3
                         height: styler.themeItemSizeSmall
                         radius: height / 2
-                        color: on ? styler.amber : "#ffffff"
+                        color: on ? styler.amber : styler.surface
                         border.color: on ? styler.amber : styler.themeSecondaryColor
                         LabelPL {
                             anchors.centerIn: parent

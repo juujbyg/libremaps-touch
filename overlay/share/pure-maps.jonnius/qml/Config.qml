@@ -84,7 +84,7 @@ Item {
     property bool   tiltWhenNavigating
     property int    trafficRerouteTime: -1
     property string units
-    property string arrowColor: "amber"
+    property string arrowColor: "sky"
     property bool   voiceFriendly: true
     property string voiceGender
     property string voiceStyle: "calm"

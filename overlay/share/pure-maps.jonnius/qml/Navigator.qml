@@ -68,6 +68,8 @@ Item {
     property alias  totalTime: navigatorBase.totalTime
     property alias  totalTimeInTraffic: navigatorBase.totalTimeInTraffic
     property alias  transportMode: navigatorBase.mode
+    // the streets the route turns onto: [{x, y, name}], for the purple tags on the map
+    property var    streetTags: []
 
     NavigatorBase {
         id: navigatorBase
@@ -192,6 +194,7 @@ Item {
 
     function clearRoute() {
         navigatorBase.clearRoute();
+        streetTags = [];
         provider = "";
         saveRoute({});
     }
@@ -339,6 +342,21 @@ Item {
                          "optimized": navigatorBase.optimized }]);
     }
 
+    function makeStreetTags(maneuvers) {
+        // one tag per street the route turns onto; the start has no turn
+        var tags = [], seen = {};
+        for (var i = 1; i < maneuvers.length; i++) {
+            var m = maneuvers[i];
+            var s = m.street;
+            if (Array.isArray(s)) s = s.length > 0 ? s[0] : "";
+            s = s ? String(s).split(";")[0].trim() : "";
+            if (!s || s.charAt(0) === "\u21e8" || seen[s] || m.x === undefined) continue;
+            seen[s] = true;
+            tags.push({"x": m.x, "y": m.y, "name": s});
+        }
+        return tags;
+    }
+
     function saveRoute(route_in) {
         // Save route polyline to JSON file.
         var data = Util.polylineToJson(route_in);
@@ -348,6 +366,7 @@ Item {
     function setRoute(route) {
         // Set new route
         navigatorBase.setRoute(route);
+        streetTags = makeStreetTags(route.maneuvers || []);
         provider = route.provider;
         saveRoute(route);
     }

@@ -31,7 +31,10 @@ p.write_bytes(b)
 print("patched", n, "occurrences")
 PY
 # desktop entry, manifest
-EXEC="env UBUNTU_UI_TOOLKIT_THEME=Lomiri.Components.Themes.Ambiance QT_QUICK_CONTROLS_STYLE=Default"
+# QSG_RENDER_LOOP=basic: with Qt's threaded render loop, any redraw of a page pushed over the
+# map (a scroll, a theme switch) hung the Adreno GPU and the driver killed the app, in 0.9.6
+# as well (Pixel 3a, 2026-11-18). Rendering on the main thread stopped it.
+EXEC="env UBUNTU_UI_TOOLKIT_THEME=Lomiri.Components.Themes.Ambiance QT_QUICK_CONTROLS_STYLE=Default QSG_RENDER_LOOP=basic"
 if [ "$DEV" = 1 ]; then
   EXEC="$EXEC QML_XHR_ALLOW_FILE_READ=1 QML_XHR_ALLOW_FILE_WRITE=1"
   cp devhook/DevHook.qml build/pkg/share/$NEW/qml/DevHook.qml

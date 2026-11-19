@@ -26,9 +26,9 @@ MapButton {
     // never disabled: with no fix yet a tap says so, instead of doing nothing
     active: map.autoCenter
     iconHeight: styler.themeIconSizeSmall * 1.25
-    iconSource: map.autoCenter ? Qt.resolvedUrl("icons/locate-on.svg")
-                               : gps.coordinateValid ? Qt.resolvedUrl("icons/locate.svg")
-                                                     : Qt.resolvedUrl("icons/locate-off.svg")
+    iconSource: map.autoCenter ? styler.icon("locate-fixed")
+                               : gps.coordinateValid ? styler.icon("locate")
+                                                     : styler.icon("locate-off", "muted")
     states: [
         State {
             when: !hidden && (app.mode === modes.explore || app.mode === modes.exploreRoute)

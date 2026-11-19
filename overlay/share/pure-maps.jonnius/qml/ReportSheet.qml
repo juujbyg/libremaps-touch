@@ -31,7 +31,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: "#000000"
-        opacity: sheet.open ? 0.4 : 0
+        opacity: sheet.open ? 0.4 * (1 - panel.pull / Math.max(1, panel.height)) : 0
         Behavior on opacity { NumberAnimation { duration: 200 } }
         MouseArea {
             anchors.fill: parent
@@ -42,14 +42,46 @@ Item {
 
     Rectangle {
         id: panel
-        color: styler.hudBg
-        height: content.height + 3 * sheet.u + radius
-        radius: sheet.u * 1.6
+        border.color: styler.border
+        border.width: 1
+        color: styler.surface
+        height: content.height + 4.4 * sheet.u + radius
+        radius: sheet.u * 2
         width: parent.width
-        y: sheet.open ? parent.height - height + radius : parent.height
-        Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+        y: (sheet.open ? parent.height - height + radius : parent.height) + pull
+        Behavior on y {
+            enabled: !drag.active
+            NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+        }
 
-        MouseArea { anchors.fill: parent }   // taps on the panel don't close it
+        // how far the finger has pulled the drawer down
+        property real pull: 0
+
+        // taps on the panel don't close it; a pull down past a quarter of it does
+        MouseArea {
+            id: drag
+            anchors.fill: parent
+            property real startY: 0
+            property bool active: false
+            onPressed: { startY = mouse.y + panel.y; active = true; }
+            onPositionChanged: panel.pull = Math.max(0, mouse.y + panel.y - startY)
+            onReleased: {
+                active = false;
+                if (panel.pull > panel.height / 4) sheet.open = false;
+                panel.pull = 0;
+            }
+            onCanceled: { active = false; panel.pull = 0; }
+        }
+
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: sheet.u * 0.8
+            color: styler.borderStrong
+            height: sheet.u * 0.45
+            radius: height / 2
+            width: sheet.u * 4.5
+        }
 
         Column {
             id: content
@@ -58,13 +90,14 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: sheet.u * 1.4
             anchors.top: parent.top
-            anchors.topMargin: sheet.u * 1.4
+            anchors.topMargin: sheet.u * 2.6
             spacing: sheet.u
 
             Text {
-                color: styler.hudText
-                font.bold: true
+                color: styler.ink
+                font.family: styler.themeFontFamily
                 font.pixelSize: sheet.u * 2
+                font.weight: Font.DemiBold
                 text: app.tr("Report")
             }
 
@@ -77,11 +110,11 @@ Item {
                 Repeater {
                     model: alertWatch.reportTypes
                     Rectangle {
-                        color: tileMouse.pressed ? Qt.darker(styler.hudBg, 1.12) : Qt.darker(styler.hudBg, 1.05)
-                        border.color: Qt.darker(styler.hudBg, 1.15)
+                        color: tileMouse.pressed ? styler.subtle : styler.surface
+                        border.color: styler.border
                         border.width: 1
                         height: width * 0.92
-                        radius: sheet.u
+                        radius: styler.radiusLg
                         scale: tileMouse.pressed ? 0.95 : 1
                         width: (grid.width - 2 * grid.spacing) / 3
                         Behavior on scale { NumberAnimation { duration: 80 } }
@@ -102,9 +135,10 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: tileIcon.bottom
                             anchors.topMargin: parent.height * 0.06
-                            color: styler.hudText
-                            font.bold: true
+                            color: styler.ink
+                            font.family: styler.themeFontFamily
                             font.pixelSize: sheet.u * 1.15
+                            font.weight: Font.Medium
                             horizontalAlignment: Text.AlignHCenter
                             text: sheet.label(modelData)
                             width: parent.width - sheet.u
@@ -123,7 +157,8 @@ Item {
             }
 
             Text {
-                color: styler.hudMuted
+                color: styler.muted
+                font.family: styler.themeFontFamily
                 font.pixelSize: sheet.u * 1.15
                 lineHeight: 1.1
                 text: app.tr("Reports are public and anonymous. They share only this spot, your direction and the time, through Nostr relays, and disappear on their own.")
