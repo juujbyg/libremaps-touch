@@ -107,7 +107,7 @@ MapButton {
     // while navigating it shows only after the map was moved away from you
     property bool hidden: app.modalDialog || app.infoPanelOpen ||
                           (app.mode === modes.navigate && map.autoCenter) ||
-                          (map.cleanMode && !app.conf.mapModeCleanShowCenter)
+                          (map.cleanMode && !app.conf.mapModeCleanShowCenter && !map.followPaused)
     property bool nextClickToAuto: false
 
     Timer {
@@ -131,6 +131,11 @@ MapButton {
         var notifyId = "centerButton";
         if (!gps.coordinateValid) {
             notification.flash(app.tr("Looking for your location\u2026"), notifyId);
+            return;
+        }
+        // following was paused by dragging the map: take it back up at once
+        if (map.followPaused) {
+            map.resumeFollow();
             return;
         }
         if (app.map.autoCenter) {

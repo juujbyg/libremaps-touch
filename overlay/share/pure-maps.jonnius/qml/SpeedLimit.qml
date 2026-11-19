@@ -22,6 +22,7 @@ Item {
     width: Math.round(styler.themePaddingMedium * (driveSpeed.visible ? 3.9 : 4.8))
     visible: {
         if (app.modalDialog) return false;
+        if (app.transportMode === "foot" || app.transportMode === "transit") return false;
         if (app.conf.showSpeedLimit==="never" || !(app.mode === modes.navigate || app.mode === modes.followMe))
             return false;
         if (app.conf.showSpeedLimit==="exceeding") {

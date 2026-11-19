@@ -583,7 +583,44 @@ MapboxMap {
         map.center = QtPositioning.coordinate(y, x);
     }
 
+    // Waze-style: dragging or pinching the map while it follows you pauses following,
+    // so you can look around; it comes back 8 s after the last touch, or at once
+    // with the centre button
+    property bool followPaused: false
+
+    onGestureInProgressChanged: {
+        if (map.gestureInProgress) {
+            resumeFollowTimer.stop();
+            if (map.autoCenter && (app.mode === modes.navigate || app.mode === modes.followMe ||
+                                   app.mode === modes.navigatePost)) {
+                // switch these off first, so their own handlers don't flash a toast
+                map.autoZoom = false;
+                map.autoRotate = false;
+                map.autoCenter = false;
+                map.followPaused = true;
+            }
+        } else if (map.followPaused) {
+            resumeFollowTimer.restart();
+        }
+    }
+
+    Timer {
+        id: resumeFollowTimer
+        interval: 8000
+        repeat: false
+        onTriggered: map.resumeFollow()
+    }
+
+    function resumeFollow() {
+        resumeFollowTimer.stop();
+        if (!map.followPaused) return;
+        map.followPaused = false;
+        setMode();
+    }
+
     function setMode() {
+        resumeFollowTimer.stop();
+        map.followPaused = false;
         if (app.mode === modes.explore) setModeExplore();
         else if (app.mode === modes.exploreRoute) setModeExploreRoute();
         else if (app.mode === modes.followMe) setModeFollowMe();
@@ -678,10 +715,10 @@ MapboxMap {
         var counter = 0;
         for (var i=0; i < locations.length; ++i) {
             var l = locations[i];
+            // no start pin: the position marker already shows where the route begins
+            if (l.origin) continue;
             var symbol;
-            if (l.origin)
-                symbol = map.images.locationStart;
-            else if (l.final)
+            if (l.final)
                 symbol = map.images.locationEnd;
             else if (l.destination)
                 symbol = map.images.locationDest;

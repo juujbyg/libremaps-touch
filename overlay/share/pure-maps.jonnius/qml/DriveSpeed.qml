@@ -20,7 +20,9 @@ Item {
     anchors.bottom: alertBanner.shown ? alertBanner.top : referenceBlockBottomLeft.top
     anchors.bottomMargin: styler.themePaddingMedium * 1.2
     height: width
+    // not on foot or on public transport: a speedometer is for vehicles
     visible: !app.modalDialog &&
+             app.transportMode !== "foot" && app.transportMode !== "transit" &&
              (app.mode === modes.navigate || app.mode === modes.followMe ||
               app.mode === modes.navigatePost)
     width: Math.round(styler.themePaddingMedium * 6.2)
