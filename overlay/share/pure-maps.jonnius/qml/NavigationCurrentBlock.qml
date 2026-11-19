@@ -13,6 +13,7 @@
  */
 
 import QtQuick 2.0
+import QtQml 2.2
 import QtGraphicalEffects 1.0
 import "platform"
 import "."
@@ -33,9 +34,38 @@ Item {
     property real marginExtraRightSide: 0
 
     property bool   arrived:   app.mode === modes.navigatePost
-    property string icon:      app.navigator.icon
-    property string manDist:   app.navigator.manDist
-    property string narrative: app.navigator.narrative
+    // Before the navigator has placed us on the route (standing at the start,
+    // or the first metres), it says only "Preparing to start navigation".
+    // Show the first real turn instead, like other navigation apps do.
+    property bool   preparing: app.navigator.icon === "navigation-start" && prep.narrative !== ""
+    property var    prep: ({"icon": "", "narrative": "", "dist": ""})
+    property string icon:      preparing ? prep.icon : app.navigator.icon
+    property string manDist:   preparing ? prep.dist : app.navigator.manDist
+    property string narrative: preparing ? prep.narrative : app.navigator.narrative
+
+    Instantiator {
+        id: firstTurns
+        model: app.navigator.maneuvers
+        delegate: QtObject {
+            property string ic: model.icon ? model.icon : ""
+            property string na: model.narrative ? model.narrative : ""
+            property string le: model.length ? model.length : ""
+        }
+        onObjectAdded: prepTimer.restart()
+        onObjectRemoved: prepTimer.restart()
+    }
+    Timer {
+        id: prepTimer
+        interval: 50
+        onTriggered: {
+            if (firstTurns.count < 2) {
+                block.prep = {"icon": "", "narrative": "", "dist": ""};
+                return;
+            }
+            var a = firstTurns.objectAt(0), b = firstTurns.objectAt(1);
+            block.prep = {"icon": b.ic, "narrative": b.na, "dist": a.le};
+        }
+    }
     property string nextIcon:  app.navigator.nextIcon
     property string nextManDist: app.navigator.nextManDist
     property bool   notify:    app.navigator.notify

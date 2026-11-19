@@ -416,7 +416,7 @@ MapboxMap {
         map.setLayoutProperty(map.layers.route, "line-join", "round");
         map.setPaintProperty(map.layers.route, "line-color", styler.route);
         map.setPaintProperty(map.layers.route, "line-opacity", styler.routeOpacity);
-        map.setPaintProperty(map.layers.route, "line-width", 16 * map.mapToQtPixelRatio);
+        map.setPaintProperty(map.layers.route, "line-width", 20 * map.mapToQtPixelRatio);
         // Other routes while choosing one: grey, under the chosen route
         map.setLayoutProperty(map.layers.alternatives, "line-cap", "round");
         map.setLayoutProperty(map.layers.alternatives, "line-join", "round");
@@ -430,7 +430,7 @@ MapboxMap {
         map.setLayoutProperty(map.layers.routeOutline, "line-cap", "round");
         map.setLayoutProperty(map.layers.routeOutline, "line-join", "round");
         map.setPaintProperty(map.layers.routeOutline, "line-color", styler.routeCasing || styler.route);
-        map.setPaintProperty(map.layers.routeOutline, "line-gap-width", 16 * map.mapToQtPixelRatio);
+        map.setPaintProperty(map.layers.routeOutline, "line-gap-width", 20 * map.mapToQtPixelRatio);
         map.setPaintProperty(map.layers.routeOutline, "line-opacity", 1 - (1-styler.routeOpacity)/2);
         map.setPaintProperty(map.layers.routeOutline, "line-width", 3 * map.mapToQtPixelRatio);
         // Configure layer for street tags: white names on purple tags at the turns.
@@ -775,7 +775,7 @@ MapboxMap {
 
     function streetTagSize() {
         // the map draws twice as big while navigating; keep the tags readable but small
-        return (map.scale > 1 ? 11 : 9) / Math.max(1, map.scale);
+        return (map.scale > 1 ? 8.5 : 9) / Math.max(1, map.scale);
     }
 
     onScaleChanged: {
@@ -788,7 +788,7 @@ MapboxMap {
         var anchor = toLeft ? "bottom-right" : "bottom-left";
         map.setLayoutProperty(layer, "icon-image", map.images.streetPill);
         map.setLayoutProperty(layer, "icon-text-fit", "both");
-        map.setLayoutProperty(layer, "icon-text-fit-padding", "[4, 8, 4, 8]");  // arrays go as JSON text
+        map.setLayoutProperty(layer, "icon-text-fit-padding", "[3, 6, 3, 6]");  // arrays go as JSON text
         map.setLayoutProperty(layer, "icon-anchor", anchor);
         map.setLayoutProperty(layer, "text-anchor", anchor);
         map.setLayoutProperty(layer, "text-offset", toLeft ? "[-0.6, -0.5]" : "[0.6, -0.5]");

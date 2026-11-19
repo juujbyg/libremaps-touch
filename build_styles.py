@@ -350,6 +350,14 @@ def add_osm_detail(style, mode):
     for i in ("waterway-stream-canal", "waterway-stream-canal-intermittent"):
         by_id[i]["paint"]["line-width"] = zoom_curve((12, 0.5), (14, 1), (20, 6), kind=("exponential", 1.3))
 
+    # footways and sidewalks: thin and quiet, so they don't frame every
+    # block in dashes while driving at night
+    for i in ("highway-path", "bridge-path", "tunnel-path"):
+        p = by_id[i]["paint"]
+        p["line-width"] = zoom_curve((15, 0.8), (20, 2.5))
+        if mode == "night":
+            p["line-color"] = "#2b394d"
+
     # municipal boundaries, faint dashes
     layers.insert([l["id"] for l in layers].index("boundary_3"), {
         "id": "boundary_8", "type": "line", "source": "openmaptiles",

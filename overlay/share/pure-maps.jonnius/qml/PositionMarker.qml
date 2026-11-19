@@ -114,7 +114,9 @@ Item {
     function configureLayers() {
         map.setLayoutProperty(marker.layers.still, "icon-allow-overlap", true);
         map.setLayoutProperty(marker.layers.still, "icon-image", marker.images.still);
-        map.setLayoutProperty(marker.layers.still, "icon-rotation-alignment", "map");
+        // the pin stands upright, also on the tilted driving view
+        map.setLayoutProperty(marker.layers.still, "icon-rotation-alignment", "viewport");
+        map.setLayoutProperty(marker.layers.still, "icon-pitch-alignment", "viewport");
         // the pin's tip, not its middle, sits on the real position
         map.setLayoutProperty(marker.layers.still, "icon-anchor", "bottom");
         map.setLayoutProperty(marker.layers.still, "icon-size", 1 * map.mapToQtPixelRatio / map.devicePixelRatio );

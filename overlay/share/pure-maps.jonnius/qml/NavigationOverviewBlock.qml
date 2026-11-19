@@ -34,9 +34,12 @@ Item {
     property real marginExtraRightSide: 0
 
     property bool   showNextLocation: navigator.hasNextLocation
-    property string destDist:  showNextLocation ? navigator.nextLocationDist : app.navigator.destDist
+    // before the navigator has placed us on the route, show the whole route
+    property string destDist:  showNextLocation ? navigator.nextLocationDist :
+                               known(app.navigator.destDist) ? app.navigator.destDist : app.navigator.totalDist
     property string destEta:   showNextLocation ? navigator.nextLocationEta : app.navigator.destEta
-    property string destTime:  showNextLocation ? navigator.nextLocationTime : app.navigator.destTime
+    property string destTime:  showNextLocation ? navigator.nextLocationTime :
+                               known(app.navigator.destTime) ? app.navigator.destTime : app.navigator.totalTime
 
     property real u: styler.themePaddingMedium
 

@@ -19,7 +19,7 @@ from poor import offline_index as oi
 E = oi.E
 
 # km/h by road class
-CAR_KMH = {1: 105, 2: 80, 3: 55, 4: 48, 5: 40, 6: 25, 7: 15, 8: 12}
+CAR_KMH = {1: 90, 2: 70, 3: 55, 4: 48, 5: 40, 6: 25, 7: 15, 8: 12}
 # seconds lost at each junction (lights, give way, slowing for turns)
 CAR_JUNCTION_S = {1: 0.0, 2: 1.0, 3: 6.0, 4: 6.0, 5: 5.0, 6: 4.0, 7: 4.0, 8: 4.0}
 RAMP_KMH = 55

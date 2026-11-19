@@ -109,6 +109,17 @@ def prepare_point(point):
             d["type"] = "break_through"
         else:
             d["type"] = "break"
+        if point.get("heading") is not None:
+            d["heading"] = int(point["heading"]) % 360
+            d["heading_tolerance"] = 45
+        acc = point.get("accuracy")
+        if acc and acc > 10 and point.get("heading") is None:
+            # Standing still with a rough (Wi-Fi) position: any road within
+            # it may start the route, so it can't be pinned to the wrong
+            # street and begin with a loop. Never a motorway or a ramp
+            # though, which may run right beside a house.
+            d["radius"] = int(min(acc, 30))
+            d["search_filter"] = {"max_road_class": "primary", "exclude_ramp": True}
         return d
     geocoder = poor.Geocoder("default")
     results = geocoder.geocode(point, params=dict(limit=1))
@@ -158,8 +169,9 @@ def parse_exit(maneuver, key):
 def route_valhalla(locations, params, costing):
     loc = list(map(prepare_point, locations))
     heading = params.get("heading", None)
-    if heading is not None:
-        loc[0]["heading"] = heading
+    if heading is not None and "heading" not in loc[0]:
+        loc[0]["heading"] = int(heading) % 360
+        loc[0]["heading_tolerance"] = 45
     conf = poor.conf.routers.libremaps
     units = "kilometers" if poor.conf.units == "metric" else "miles"
     options = {}

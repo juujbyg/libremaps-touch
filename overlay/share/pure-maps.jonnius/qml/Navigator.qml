@@ -173,12 +173,45 @@ Item {
 
         function updatePosition() {
             if (destReached) return; // no more updates
-            navigatorBase.setPosition(gps.coordinate,
-                                      gps.directionDeviceValid ? gps.directionDevice : gps.direction,
+            var dir = gps.directionDeviceValid ? gps.directionDevice : gps.direction;
+            var dirValid = gps.directionValid;
+            if (!dirValid) {
+                // Standing still there is no course, and the navigator then
+                // calls a perfectly good position "unknown". Use the way the
+                // route runs where we are, so it can start from a standstill.
+                var b = routeBearingAt(gps.coordinate);
+                if (b >= 0) {
+                    dir = b;
+                    dirValid = true;
+                }
+            }
+            navigatorBase.setPosition(gps.coordinate, dir,
                                       gps.horizontalAccuracy,
                                       gps.horizontalAccuracyValid &&
-                                      gps.ready &&
-                                      gps.directionValid);
+                                      gps.ready && dirValid);
+        }
+
+        // bearing of the route at the point nearest to c, or -1
+        property int bearingHint: 0
+        function routeBearingAt(c) {
+            var r = navigatorBase.route;
+            if (!r || r.length < 2 || !c || !c.isValid) return -1;
+            // search near the last match first; fall back to the whole route
+            var n = r.length, best = -1, bd = 1e12;
+            var from = Math.max(0, bearingHint - 50), to = Math.min(n - 1, bearingHint + 400);
+            for (var pass = 0; pass < 2 && best < 0; pass++) {
+                for (var i = from; i < to; i++) {
+                    var d = c.distanceTo(r[i]);
+                    if (d < bd) { bd = d; best = i; }
+                }
+                if (bd > 150 + gps.horizontalAccuracy) { best = -1; bd = 1e12; from = 0; to = n - 1; }
+            }
+            if (best < 0 || bd > 150 + gps.horizontalAccuracy) return -1;
+            bearingHint = best;
+            // a few points ahead, so a tiny kink doesn't set the direction
+            var j = best + 1;
+            while (j < n - 1 && r[best].distanceTo(r[j]) < 15) j++;
+            return Math.round(r[best].azimuthTo(r[j]));
         }
     }
 
@@ -230,11 +263,16 @@ Item {
                 return;
             }
             var p = app.getPosition();
-            loc.splice(0, 0,
-                       {"text": navigatorBase.running ?
+            var here = {"text": navigatorBase.running ?
                                     app.tr("Rerouting position") :
                                     app.tr("Current position"),
-                                    "x": p[0], "y": p[1]});
+                        "x": p[0], "y": p[1]};
+            // which way we face, when moving, so the route doesn't start
+            // with a U-turn; and how rough the position is, so the router
+            // may start from any road within it instead of only the nearest
+            if (gps.directionValid) here.heading = Math.round(gps.direction);
+            if (gps.horizontalAccuracyValid) here.accuracy = Math.round(gps.horizontalAccuracy);
+            loc.splice(0, 0, here);
         }
         // filter out arrived locations
         loc = loc.filter(function (l) {
@@ -315,7 +353,7 @@ Item {
         hasBeenAlongRoute = false;
         var loc = navigatorBase.locations.slice(1);
         var options = {
-            "heading": gps.direction,
+            "heading": gps.directionValid ? gps.direction : null,
             "notification": traffic ? app.tr("Updating traffic"): app.tr("Rerouting"),
             "voicePrompt": true
         }
