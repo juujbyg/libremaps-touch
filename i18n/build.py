@@ -113,7 +113,7 @@ def main():
         write_ts(ts, lang, entries)
         out = os.path.join(tdir, "%s-%s.qm" % (NAME, lang))
         subprocess.run([LRELEASE, "-silent", ts, "-qm", out], check=True)
-        samples = [(s, entries[s]) for s in list(mine)[:40] + list(base)[:40]]
+        samples = [(s, entries[s]) for s in [m for m in mine if m in entries][:40] + list(base)[:40]]
         bad = check_qm(out, samples)
         # Python gettext: Pure Maps' catalogue plus our descriptions
         mo_in = os.path.join(ORIG, "locale", lang, "LC_MESSAGES", "pure-maps.mo")
@@ -123,7 +123,7 @@ def main():
                 cat[s] = t
         mo_out = os.path.join(OUT, "locale", lang, "LC_MESSAGES", "pure-maps.mo")
         write_mo(mo_out, cat)
-        mo_ok = all(gettext.GNUTranslations(open(mo_out, "rb")).gettext(s) == t for s, t in list(mine.items())[:20])
+        mo_ok = all(gettext.GNUTranslations(open(mo_out, "rb")).gettext(s) == t for s, t in [(s, t) for s, t in mine.items() if s in strings and t][:20])
         print("%-6s %4d entries, %3d of %d LibreMaps strings translated%s%s" % (
             lang, len(entries), len(strings) - len(missing), len(strings),
             "" if not bad else ", %d LOOKUPS FAILED" % len(bad), "" if mo_ok else ", .mo FAILED"))

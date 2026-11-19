@@ -195,10 +195,91 @@ Rectangle {
         }
     }
 
-    Rectangle {
+    // ---- other routes: one card each (time, how much slower, distance and main road)
+    Item {
+        id: choices
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: summary.bottom
+        height: shown ? cardRow.height + styler.themePaddingMedium * 1.4 : 0
+        visible: shown
+
+        readonly property var  alts: app.navigator ? app.navigator.alternatives : []
+        readonly property bool shown: alts && alts.length > 1
+
+        Row {
+            id: cardRow
+            anchors.left: parent.left
+            anchors.leftMargin: styler.themeHorizontalPageMargin
+            anchors.top: parent.top
+            spacing: styler.themePaddingMedium
+
+            Repeater {
+                model: choices.shown ? choices.alts.length : 0
+                delegate: Rectangle {
+                    readonly property var  r: choices.alts[index]
+                    readonly property var  sum: r && r.summary ? r.summary : {}
+                    readonly property bool chosen: app.navigator.alternativeIndex === index
+                    readonly property real extra: (sum.seconds || 0) - ((choices.alts[0].summary || {}).seconds || 0)
+                    border.color: chosen ? styler.primary : styler.border
+                    border.width: chosen ? 2 : 1
+                    color: cardMouse.pressed ? styler.subtle : styler.surface
+                    height: cardCol.height + styler.themePaddingMedium * 1.6
+                    radius: styler.radiusLg
+                    width: (choices.width - 2 * styler.themeHorizontalPageMargin
+                            - (choices.alts.length - 1) * cardRow.spacing) / choices.alts.length
+
+                    Column {
+                        id: cardCol
+                        anchors.left: parent.left
+                        anchors.leftMargin: styler.themePaddingMedium * 1.2
+                        anchors.right: parent.right
+                        anchors.rightMargin: styler.themePaddingMedium
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: styler.themePaddingSmall * 0.5
+                        Text {
+                            color: styler.ink
+                            elide: Text.ElideRight
+                            font.family: styler.themeFontFamily
+                            font.pixelSize: styler.themeFontSizeMedium
+                            font.weight: Font.DemiBold
+                            text: sum.time || ""
+                            width: parent.width
+                        }
+                        Text {
+                            color: index === 0 ? styler.success : styler.muted
+                            elide: Text.ElideRight
+                            font.family: styler.themeFontFamily
+                            font.pixelSize: styler.themeFontSizeExtraSmall
+                            font.weight: Font.Medium
+                            text: index === 0 ? app.tr("Fastest") :
+                                                app.tr("+%1 min").arg(Math.max(1, Math.round(extra / 60)))
+                            width: parent.width
+                        }
+                        Text {
+                            color: styler.muted
+                            elide: Text.ElideRight
+                            font.family: styler.themeFontFamily
+                            font.pixelSize: styler.themeFontSizeExtraSmall
+                            text: sum.via ? app.tr("%1 · via %2").arg(sum.distance || "").arg(sum.via)
+                                          : (sum.distance || "")
+                            width: parent.width
+                        }
+                    }
+                    MouseArea {
+                        id: cardMouse
+                        anchors.fill: parent
+                        onClicked: app.navigator.chooseAlternative(index)
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: choices.bottom
         color: styler.border
         height: 1
     }
@@ -206,7 +287,7 @@ Rectangle {
     // ---- numbered turns
     ListView {
         id: turns
-        anchors.top: summary.bottom
+        anchors.top: choices.bottom
         anchors.topMargin: 1
         anchors.bottom: parent.bottom
         anchors.left: parent.left

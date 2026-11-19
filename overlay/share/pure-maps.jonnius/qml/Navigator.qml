@@ -70,6 +70,10 @@ Item {
     property alias  transportMode: navigatorBase.mode
     // the streets the route turns onto: [{x, y, name}], for the purple tags on the map
     property var    streetTags: []
+    // other routes to the same place (Valhalla alternates), while choosing one:
+    // each is a full route from the router; the chosen one is also the current route
+    property var    alternatives: []
+    property int    alternativeIndex: 0
 
     NavigatorBase {
         id: navigatorBase
@@ -139,6 +143,9 @@ Item {
                 destReached = false;
 
             if (running) {
+                // the trip uses the chosen route: the other ones leave the map
+                alternatives = [];
+                alternativeIndex = 0;
                 rerouteConsecutiveErrors = 0;
                 rerouteConsecutiveIgnored = 0;
                 reroutePreviousTime = -1;
@@ -192,7 +199,16 @@ Item {
         loadRoute();
     }
 
+    function chooseAlternative(index) {
+        // switch the route shown to one of the alternatives
+        if (index < 0 || index >= alternatives.length || index === alternativeIndex) return;
+        setRoute(alternatives[index]);
+        alternativeIndex = index;
+    }
+
     function clearRoute() {
+        alternatives = [];
+        alternativeIndex = 0;
         navigatorBase.clearRoute();
         streetTags = [];
         provider = "";
@@ -203,6 +219,8 @@ Item {
         if (routing) return;
         if (!options) options = {};
         options.optimized = navigatorBase.optimized;
+        // alternatives only while choosing a route, never when rerouting a trip
+        options.alternatives = !navigatorBase.running;
         var notifyId = "route";
         var loc = locations || navigatorBase.locations;
         // note that GPX trace does not use locations
@@ -228,21 +246,30 @@ Item {
         var args = [loc,
                     options];
         py.call("poor.app.router.route", args, function(route) {
-            if (Array.isArray(route) && route.length > 0)
-                // If the router returns multiple alternative routes,
-                // always route using the first one.
+            var alts = [];
+            if (Array.isArray(route) && route.length > 0) {
+                // several routes: the first (fastest) is used, the others are
+                // offered in the route panel
+                alts = route;
                 route = route[0];
+            }
             if (route && route.error && route.message) {
                 app.notification.flash(app.tr("Routing failed: %1").arg(route.message), notifyId);
                 if (options.voicePrompt) navigatorBase.prompt("std:routing failed");
                 rerouteConsecutiveErrors++;
             } else if (route && route.x && route.x.length > 0) {
-                app.notification.flash(navigatorBase.running ?
-                                           (traffic ? app.tr("Traffic and route updated") : app.tr("New route found")) :
-                                           app.tr("Route found"), notifyId);
+                if (route.offline)
+                    app.notification.flash(app.tr("No connection: route from your offline maps, times are estimates"),
+                                           notifyId);
+                else
+                    app.notification.flash(navigatorBase.running ?
+                                               (traffic ? app.tr("Traffic and route updated") : app.tr("New route found")) :
+                                               app.tr("Route found"), notifyId);
                 if (options.voicePrompt) navigatorBase.prompt(traffic ? "std:traffic updated" :
                                                                         "std:new route found");
                 setRoute(route);
+                alternativeIndex = 0;
+                alternatives = alts.length > 1 ? alts : [];
                 rerouteConsecutiveErrors = 0;
                 if (options.fitToView) map.fitViewToRoute();
                 if (options.save) {

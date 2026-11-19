@@ -27,7 +27,16 @@ def found(root):
             parts = re.findall(LIT, m.group(1))
             s = "".join(unescape(x) for x in parts)
             out.setdefault(s, set()).add(os.path.relpath(p, root))
+    # Python: tr("...") in the overlay's own modules (offline directions);
+    # they go to the gettext catalogue that build.py writes
+    for p in glob.glob(os.path.join(root, "poor", "offline*.py")):
+        text = open(p, encoding="utf-8").read()
+        for m in PY_CALL.finditer(text):
+            out.setdefault(unescape(m.group(1)), set()).add(os.path.relpath(p, root))
     return out
+
+
+PY_CALL = re.compile(r'\btr\(\s*(' + LIT + r')\s*\)')
 
 
 def known_sources():
@@ -42,6 +51,9 @@ def known_sources():
 if __name__ == "__main__":
     have = known_sources()
     new = found(os.path.join(ROOT, "overlay/share/pure-maps.jonnius"))
-    todo = sorted(s for s in new if s not in have and s.strip())
+    # Python strings stay even when Pure Maps' QML has them: gettext has its
+    # own catalogue
+    todo = sorted(s for s in new if s.strip() and (s not in have or
+                                                   any(f.endswith(".py") for f in new[s])))
     json.dump(todo, open(os.path.join(HERE, "strings.json"), "w"), ensure_ascii=False, indent=1)
     print(len(todo), "strings to translate")

@@ -287,6 +287,20 @@ def address(tags):
 
 
 def nearby(query_type, query_name, near, radius, params):
+    """Places of a type near a point: online, or from the saved offline
+    areas when the servers can't be reached."""
+    x, y = prepare_point(near)
+
+    def offline():
+        found = poor.offline_search.nearby(query_type, query_name, x, y, int(radius),
+                                           params.get("limit", 40))
+        return (x, y, found) if found else None
+
+    return poor.offline_search.fallback(
+        lambda: nearby_online(query_type, query_name, near, radius, params), offline)
+
+
+def nearby_online(query_type, query_name, near, radius, params):
     x, y = prepare_point(near)
     limit = params.get("limit", 40)
     label = query_type

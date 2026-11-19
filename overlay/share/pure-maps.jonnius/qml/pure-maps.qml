@@ -71,6 +71,7 @@ ApplicationWindowPL {
     property bool   narrativePageSeen: false
     property var    navigator: null
     property var    notification: null
+    property var    offlineState: null
     property var    pois: null
     property bool   poiActive: false
     property bool   portrait: screenHeight >= screenWidth

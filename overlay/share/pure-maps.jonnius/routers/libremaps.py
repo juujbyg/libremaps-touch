@@ -120,7 +120,31 @@ def route(locations, params):
     mode = poor.conf.routers.libremaps.mode
     if mode == "transit":
         return route_transit(locations, params)
-    return route_valhalla(locations, params, mode)
+    # Valhalla, or the saved offline areas when it can't be reached
+    return poor.offline_search.fallback(
+        lambda: route_valhalla(locations, params, mode),
+        lambda: route_offline(locations, mode),
+        wait=8.0)
+
+
+def route_offline(locations, costing):
+    """A route over the roads of the saved offline areas, or None."""
+    pts = [prepare_point(p) for p in locations]
+    pts = [(p["lon"], p["lat"]) for p in pts]
+    if not all(poor.offline_route.covers(x, y) for x, y in pts):
+        return None
+    try:
+        out = poor.offline_route.route(pts, costing, tr=poor.i18n._)
+    except poor.offline_route.NoRoute:
+        return None
+    seconds, meters = out.pop("seconds"), out.pop("meters")
+    out["locations"] = list(locations)
+    out["language"] = poor.util.get_default_language("en")
+    out["summary"] = dict(seconds=seconds, meters=meters,
+                          time=poor.util.format_time(seconds),
+                          distance=poor.util.format_distance(meters),
+                          via=main_roads(out["maneuvers"]))
+    return out
 
 
 # ---------------------------------------------------------------- Valhalla
@@ -141,17 +165,40 @@ def route_valhalla(locations, params, costing):
     options = {}
     if costing in ("auto", "taxi", "bus", "motor_scooter"):
         options = {"use_highways": conf.use_highways, "use_tolls": conf.use_tolls}
-    body = json.dumps(dict(locations=loc, costing=costing,
-                           costing_options={costing: options},
-                           directions_options=dict(language=conf.language, units=units)))
+    request = dict(locations=loc, costing=costing,
+                   costing_options={costing: options},
+                   directions_options=dict(language=conf.language, units=units))
+    # Other ways there when the user is choosing a route (not when rerouting
+    # mid-trip): Valhalla's "alternates", shown grey on the map to pick from
+    want_alternatives = bool(params.get("alternatives", False)) and len(loc) == 2
+    if want_alternatives:
+        request["alternates"] = 2
+    body = json.dumps(request)
     key = VALHALLA + "_" + body
     with poor.util.silent(KeyError):
         return copy.deepcopy(cache[key])
     result = poor.AttrDict(poor.http.post_json(
         VALHALLA, body=body, headers={"Content-Type": "application/json",
                                       "User-Agent": USER_AGENT}))
+    out = parse_trip(result.trip, locations, costing)
+    if want_alternatives:
+        routes = [out]
+        for alt in result.get("alternates", None) or []:
+            try:
+                r = parse_trip(poor.AttrDict(alt).trip, locations, costing)
+            except Exception:
+                continue
+            if r["x"]:
+                routes.append(r)
+        out = routes if len(routes) > 1 else out
+    if (out[0] if isinstance(out, list) else out)["x"]:
+        cache[key] = copy.deepcopy(out)
+    return out
+
+
+def parse_trip(trip, locations, costing):
     X, Y, Man, ind = [], [], [], [0]
-    for leg in result.trip.legs:
+    for leg in trip.legs:
         x, y = poor.util.decode_epl(leg.shape, precision=6)
         Man.extend([dict(
             x=float(x[m.begin_shape_index]),
@@ -175,14 +222,30 @@ def route_valhalla(locations, params, costing):
         X.extend(x)
         Y.extend(y)
         ind.append(len(X) - 1)
+    summary = trip.get("summary", None) or {}
+    seconds = float(summary.get("time", 0) or 0)
+    meters = float(summary.get("length", 0) or 0) * (1000 if poor.conf.units == "metric" else 1609.344)
     out = dict(x=X, y=Y,
-               locations=[locations[i.original_index] for i in result.trip.locations],
+               locations=[locations[i.original_index] for i in trip.locations],
                location_indexes=ind, maneuvers=Man, mode=MODE.get(costing, "car"),
-               optimized=False)
-    out["language"] = result.trip.language.replace("-", "_")
-    if X:
-        cache[key] = copy.deepcopy(out)
+               optimized=False,
+               # for the route chooser: total time and length, and the main roads
+               summary=dict(seconds=seconds, meters=meters,
+                            time=poor.util.format_time(seconds),
+                            distance=poor.util.format_distance(meters),
+                            via=main_roads(Man)))
+    out["language"] = trip.language.replace("-", "_")
     return out
+
+
+def main_roads(maneuvers):
+    """The named road the route follows longest, to tell alternatives apart ("via A-6")."""
+    best, best_time = "", 0.0
+    for m in maneuvers:
+        names = m.get("street") or []
+        if names and m["duration"] > best_time:
+            best, best_time = names[0], m["duration"]
+    return best
 
 
 # --------------------------------------------------------------- Transitous

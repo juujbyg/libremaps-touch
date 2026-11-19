@@ -44,6 +44,9 @@ from poor import http
 from poor import polysimp
 from poor import storage
 from poor import offline
+from poor import offline_index
+from poor import offline_route
+from poor import offline_search
 from poor import alerts
 from poor import placeinfo
 from poor.attrdict import AttrDict

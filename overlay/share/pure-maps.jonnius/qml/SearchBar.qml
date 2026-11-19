@@ -18,7 +18,8 @@ Item {
     anchors.top: parent.top
     anchors.topMargin: styler.themePaddingLarge
     height: styler.themeItemSizeSmall * 1.2
-    visible: app.mode === modes.explore && !app.modalDialog && !app.infoPanelOpen
+    visible: app.mode === modes.explore && !app.modalDialog && !app.infoPanelOpen &&
+             !(app.offlineState && app.offlineState.picking)
     z: 900
 
     // the bar plus the shortcut chips below it, for things placed under both

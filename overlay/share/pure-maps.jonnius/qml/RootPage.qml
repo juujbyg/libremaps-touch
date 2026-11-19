@@ -16,7 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import QtQuick 2.0
+import QtQuick 2.9
 import org.puremaps 1.0
 import "."
 import "platform"
@@ -68,6 +68,35 @@ PageEmptyPL {
                 pois.clear(false);
         }
     }
+    // System Back (Alt+Left from Lomiri Gestures, or a Back key) on the map screen:
+    // close what's open, one step at a time. Pages pushed over the map have their
+    // own Back in the header, so this is off while one shows (two shortcuts with
+    // the same keys would both be ambiguous and neither would fire).
+    Shortcut {
+        enabled: app.pages.ps && app.pages.ps.currentItem === page
+        sequences: ["Alt+Left", "Back"]
+        onActivated: page.goBack()
+    }
+
+    function goBack() {
+        if (offlineState.picking) {
+            offlinePicker.close(false);
+        } else if (reportSheet.open) {
+            reportSheet.open = false;
+        } else if (app.infoPanelOpen) {
+            infoPanel.back();
+        } else if (app.mode === modes.exploreRoute) {
+            notification.flash(app.tr("Route removed"), "navigationClear");
+            navigator.clearRoute();
+        } else if (map.followPaused) {
+            map.resumeFollow();
+        }
+        // while navigating or just browsing the map, Back does nothing: it
+        // must never end a trip by accident
+    }
+
+    OfflineState { id: offlineState }
+    OfflinePicker { id: offlinePicker }
     Poi { id: pois }
     RemorsePopupPL { id: remorse; z: 1000 }
     ScaleBar { id: scaleBar }
@@ -148,6 +177,7 @@ PageEmptyPL {
         app.navigator = navigator;
         app.notification = notification;
         app.pois = pois;
+        app.offlineState = offlineState;
         app.remorse = remorse;
         // connect modal dialog properties
         app.modalDialogBasemap = Qt.binding(function () { return basemapButton.openMenu; });

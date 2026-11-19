@@ -116,6 +116,8 @@ MapboxMap {
         readonly property string poisSelected:    "pure-layer-pois-selected"
         readonly property string route:           "pure-layer-route"
         readonly property string routeOutline:    "pure-layer-route-outline"
+        readonly property string alternatives:    "libremaps-layer-alternatives"
+        readonly property string alternativesCasing: "libremaps-layer-alternatives-casing"
         readonly property string streetLabels:    "libremaps-layer-street-labels"
         readonly property string streetLabelsLeft: "libremaps-layer-street-labels-left"
     }
@@ -127,6 +129,7 @@ MapboxMap {
         readonly property string poisBookmarked: "pure-source-pois-bookmarked"
         readonly property string poisSelected:   "pure-source-pois-selected"
         readonly property string route:          "pure-source-route"
+        readonly property string alternatives:   "libremaps-source-alternatives"
         readonly property string streetLabels:   "libremaps-source-street-labels"
         readonly property string streetLabelsLeft: "libremaps-source-street-labels-left"
     }
@@ -292,6 +295,8 @@ MapboxMap {
         }
         onLocationsChanged: updateLocations()
         onStreetTagsChanged: updateStreetLabels()
+        onAlternativesChanged: updateAlternatives()
+        onAlternativeIndexChanged: updateAlternatives()
     }
 
     Connections {
@@ -334,6 +339,7 @@ MapboxMap {
         map.updateRoute();
         map.updateManeuvers();
         map.updateLocations();
+        map.updateAlternatives();
         map.setMode();
     }
 
@@ -411,6 +417,15 @@ MapboxMap {
         map.setPaintProperty(map.layers.route, "line-color", styler.route);
         map.setPaintProperty(map.layers.route, "line-opacity", styler.routeOpacity);
         map.setPaintProperty(map.layers.route, "line-width", 16 * map.mapToQtPixelRatio);
+        // Other routes while choosing one: grey, under the chosen route
+        map.setLayoutProperty(map.layers.alternatives, "line-cap", "round");
+        map.setLayoutProperty(map.layers.alternatives, "line-join", "round");
+        map.setPaintProperty(map.layers.alternatives, "line-color", styler.dark ? "#71717a" : "#a1a1aa");
+        map.setPaintProperty(map.layers.alternatives, "line-width", 12 * map.mapToQtPixelRatio);
+        map.setLayoutProperty(map.layers.alternativesCasing, "line-cap", "round");
+        map.setLayoutProperty(map.layers.alternativesCasing, "line-join", "round");
+        map.setPaintProperty(map.layers.alternativesCasing, "line-color", styler.dark ? "#3f3f46" : "#71717a");
+        map.setPaintProperty(map.layers.alternativesCasing, "line-width", 16 * map.mapToQtPixelRatio);
         // Configure layer for route casing.
         map.setLayoutProperty(map.layers.routeOutline, "line-cap", "round");
         map.setLayoutProperty(map.layers.routeOutline, "line-join", "round");
@@ -509,6 +524,9 @@ MapboxMap {
         map.addLayer(map.layers.pois, {"type": "symbol", "source": map.sources.pois});
         map.addLayer(map.layers.poisBookmarked, {"type": "symbol", "source": map.sources.poisBookmarked});
         map.addLayer(map.layers.route, {"type": "line", "source": map.sources.route}, map.firstRouteLayer);
+        // the other routes go under the chosen one
+        map.addLayer(map.layers.alternativesCasing, {"type": "line", "source": map.sources.alternatives}, map.layers.route);
+        map.addLayer(map.layers.alternatives, {"type": "line", "source": map.sources.alternatives}, map.layers.route);
         map.addLayer(map.layers.routeOutline, {"type": "line", "source": map.sources.route}, map.firstLabelLayer);
         map.addLayer(map.layers.maneuvers, {
                          "type": "circle",
@@ -853,6 +871,26 @@ MapboxMap {
         }
         map.updateSourcePoints(map.sources.pois, regCoor, regName);
         map.updateSourcePoints(map.sources.poisBookmarked, bookmarkedCoor, bookmarkedName);
+    }
+
+    function updateAlternatives() {
+        // grey lines for the routes not chosen
+        var nav = app.navigator;
+        var data = {"type": "FeatureCollection", "features": []};
+        if (nav && nav.alternatives) {
+            for (var i = 0; i < nav.alternatives.length; i++) {
+                if (i === nav.alternativeIndex) continue;
+                var r = nav.alternatives[i];
+                var coords = [];
+                // every other point is plenty for a grey preview line
+                for (var j = 0; j < r.x.length; j += 2) coords.push([r.x[j], r.y[j]]);
+                coords.push([r.x[r.x.length - 1], r.y[r.y.length - 1]]);
+                data.features.push({"type": "Feature",
+                                    "properties": {"index": i},
+                                    "geometry": {"type": "LineString", "coordinates": coords}});
+            }
+        }
+        map.updateSource(map.sources.alternatives, {"type": "geojson", "data": data});
     }
 
     function updateRoute() {
