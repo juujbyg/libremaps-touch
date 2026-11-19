@@ -14,7 +14,12 @@ Osmo Salomaa and contributors, and of its Ubuntu Touch port by Jonatan Hatakeyam
 - One router for every mode: Valhalla for walk, bike, car, scooter and taxi, and
   Transitous for public transport (`routers/libremaps.py`)
 - A keyless "nearby" guide that uses Overpass, with Photon as a fallback (`guides/libremaps.py`)
-- Offline maps: downloads a region's tiles, fonts and sprites (`poor/offline.py`, `qml/OfflinePage.qml`)
+- Offline maps anywhere: save the area on screen (`poor/offline.py`, `qml/OfflinePage.qml`,
+  `qml/OfflinePicker.qml`), then search (`poor/offline_search.py`) and get car, bike and walking
+  routes (`poor/offline_route.py`) without a connection, from indexes built on the phone
+  (`poor/offline_index.py`)
+- Alternative routes with their arrival times, a Waze-style driving screen, place cards with
+  opening hours (and fuel prices in Spain, `poor/placeinfo.py`), and Light, Dark and Auto themes
 - Speed limits and fixed speed cameras from OpenStreetMap (`qml/RoadWatch.qml`)
 - Traffic alerts: official incidents from Spain's DGT, and police, accidents, hazards,
   closed roads, jams and mobile cameras reported by other drivers through Nostr relays
@@ -27,12 +32,14 @@ Osmo Salomaa and contributors, and of its Ubuntu Touch port by Jonatan Hatakeyam
 ## Outside services
 
 These are contacted only when you use the feature that needs them:
-OpenFreeMap (map tiles), Photon (search, and places nearby when Overpass fails),
-Valhalla at openstreetmap.de (routes and speed limits),
-Transitous (public transport), Overpass (speed cameras and places nearby), ipwho.is (rough
-position before the first GPS fix), the DGT's open data feed at nap.dgt.es (official traffic
-incidents in Spain) and the Nostr relays relay.damus.io, nos.lol, relay.primal.net and
-offchain.pub (drivers' reports, read by area and published when you report). The app's About page lists them too.
+OpenFreeMap (map tiles and offline downloads), Photon (search and places nearby),
+Nominatim at openstreetmap.org (place details, names of saved areas, and places nearby when Photon
+finds nothing), Valhalla at openstreetmap.de (routes and speed limits), Transitous (public
+transport), Overpass (speed cameras, places nearby and opening hours), Spain's Ministry for
+Ecological Transition (fuel prices, one province at a time), ipwho.is (rough position before the
+first GPS fix), the DGT's open data feed at nap.dgt.es (official traffic incidents in Spain) and the
+Nostr relays relay.damus.io, nos.lol, relay.primal.net and offchain.pub (drivers' reports, read by
+area and published when you report). The app's About page lists them too.
 
 ## API keys
 
