@@ -140,7 +140,15 @@ PagePL {
                          "• Approximate position when GPS has no fix: ipwho.is sees your IP address, if that option is on.\n" +
                          "• Official traffic incidents in Spain: the DGT's open data feed (nap.dgt.es) is downloaded whole, so it learns nothing about where you are, if Traffic alerts is on.\n" +
                          "• Reports by other drivers: the Nostr relays relay.damus.io, nos.lol, relay.primal.net and offchain.pub see the area you're looking at or driving through, if Traffic alerts is on. A report you send is public: it holds the spot, your direction and the time, signed with a one-use key so your reports can't be linked to each other. Like every server listed here, the relays see your IP address.\n\n" +
-                         "Road alerts and the approximate position can be switched off in Preferences. Your last known position is stored only on the phone.")
+                         "Road alerts and the approximate position can be switched off in Preferences. Your last known position is stored only on the phone.") +
+                  "\n\n" +
+                  app.tr("Outside Spain, fuel prices and official traffic incidents come from each country's open data:\n\n" +
+                         "• France: fuel prices from prix-carburants (data.economie.gouv.fr), asked about the area of about 10 km that the station you open is in. Official incidents on national roads from Bison Futé (tipi.bison-fute.gouv.fr), downloaded whole, if Traffic alerts is on.\n" +
+                         "• Germany: official motorway incidents from the Autobahn API (verkehr.autobahn.de), which is asked only about the motorways near your route, if Traffic alerts is on.\n" +
+                         "• Italy (MIMIT, mimit.gov.it), Portugal (DGEG, precoscombustiveis.dgeg.gov.pt) and Mexico (Comisión Nacional de Energía, publicacionexterna.azurewebsites.net): fuel prices from national files downloaded whole, so they learn nothing about where you are.\n" +
+                         "• Austria: fuel prices from E-Control (api.e-control.at), asked about the area of about 1 km around the station. By law it only publishes the cheaper stations, so the others show no prices.\n" +
+                         "• Slovenia: fuel prices from goriva.si, asked about the area of about 5 km around the station.\n\n" +
+                         "Fuel prices are only looked up when you open a fuel station.")
             wrapMode: Text.WordWrap
         }
 

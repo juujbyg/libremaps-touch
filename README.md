@@ -19,9 +19,12 @@ Osmo Salomaa and contributors, and of its Ubuntu Touch port by Jonatan Hatakeyam
   routes (`poor/offline_route.py`) without a connection, from indexes built on the phone
   (`poor/offline_index.py`)
 - Alternative routes with their arrival times, a Waze-style driving screen, place cards with
-  opening hours (and fuel prices in Spain, `poor/placeinfo.py`), and Light, Dark and Auto themes
+  opening hours and fuel prices (`poor/placeinfo.py`, `poor/fuelprices.py`), and Light, Dark and
+  Auto themes. Fuel prices come from each country's open data: Spain, France, Italy, Portugal,
+  Austria, Slovenia and Mexico so far
 - Speed limits and fixed speed cameras from OpenStreetMap (`qml/RoadWatch.qml`)
-- Traffic alerts: official incidents from Spain's DGT, and police, accidents, hazards,
+- Traffic alerts: official incidents from Spain (DGT), France (Bison Futé) and Germany (Autobahn
+  API), and police, accidents, hazards,
   closed roads, jams and mobile cameras reported by other drivers through Nostr relays
   (`poor/alerts.py`, `poor/nostr.py`, `qml/Alerts.qml`). Reports are anonymous: each one is
   signed with a fresh one-use key and carries only the spot, the direction and the time.
@@ -39,7 +42,24 @@ transport), Overpass (speed cameras, places nearby and opening hours), Spain's M
 Ecological Transition (fuel prices, one province at a time), ipwho.is (rough position before the
 first GPS fix), the DGT's open data feed at nap.dgt.es (official traffic incidents in Spain) and the
 Nostr relays relay.damus.io, nos.lol, relay.primal.net and offchain.pub (drivers' reports, read by
-area and published when you report). The app's About page lists them too.
+area and published when you report).
+
+Fuel prices and official incidents in other countries, each from the country's own open data:
+prix-carburants at data.economie.gouv.fr (France, asked about a ~10 km area around the station),
+Bison Futé at tipi.bison-fute.gouv.fr (France, incidents, whole feed), the Autobahn API at
+verkehr.autobahn.de (Germany, asked only about the motorways near the route), MIMIT at
+mimit.gov.it (Italy, whole country), DGEG at precoscombustiveis.dgeg.gov.pt (Portugal, whole
+country), E-Control at api.e-control.at (Austria, ~1 km area; it only publishes the cheaper
+stations), goriva.si (Slovenia, ~5 km area) and Mexico's Comisión Nacional de Energía at
+publicacionexterna.azurewebsites.net (whole country). The app's About page lists them too.
+
+### Adding a country
+
+If your country publishes fuel prices or traffic incidents as open data with no key, it can be
+added. Fuel: one fetch function in `poor/fuelprices.py` plus a line in `COUNTRIES`, and a sample
+reply in `tests/fuelprices_check.py`. Incidents: a reader in `poor/alerts.py` (DATEX II feeds can
+reuse `_parse_datex`) and a sample in `tests/official_alerts_check.py`. Open an issue with a link
+to the data, or a pull request.
 
 ## API keys
 

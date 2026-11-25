@@ -31,7 +31,9 @@ OURS = {"cs": "cs", "de_DE": "de", "el": "el", "es": "es", "et": "et", "fi": "fi
         "fr": "fr", "fur": None, "hu_HU": "hu", "it": "it", "nb": "nb", "nl": "nl",
         "nl_BE": "nl", "pl": "pl", "pt_BR": "pt_BR", "ru": "ru", "sk_SK": "sk",
         "sl_SI": "sl", "sv": "sv", "zh_CN": "zh_CN"}
-LRELEASE = shutil.which("pyside6-lrelease") or os.path.join(os.path.dirname(sys.executable), "pyside6-lrelease")
+# LRELEASE=/usr/bin/lrelease (Qt 5, e.g. in the clickable image) works as well
+LRELEASE = (os.environ.get("LRELEASE") or shutil.which("pyside6-lrelease") or
+            os.path.join(os.path.dirname(sys.executable), "pyside6-lrelease"))
 
 
 def ours(code):
@@ -84,8 +86,13 @@ def write_mo(path, catalog):
 
 
 def check_qm(path, samples):
-    """Load the file with Qt's own QTranslator and look entries up."""
-    from PySide6.QtCore import QTranslator
+    """Load the file with Qt's own QTranslator and look entries up (or, without PySide6,
+    read it back with qm.py)."""
+    try:
+        from PySide6.QtCore import QTranslator
+    except ImportError:
+        got = {s: tr for (_, s), tr in qm.read(path).items()}
+        return [s for s, want in samples if got.get(s) != want]
     t = QTranslator()
     assert t.load(path), "Qt can't load " + path
     bad = [s for s, want in samples if t.translate("", s) != want]

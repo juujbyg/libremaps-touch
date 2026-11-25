@@ -2,9 +2,12 @@
 # LibreMaps: road alerts.
 #
 # Two sources, merged into one list:
-#  - Official incidents from Spain's traffic authority (DGT), from its open
-#    DATEX II feed: closures, roadworks, accidents, stopped vehicles (V16
-#    beacons), obstacles, slow traffic, weather. Only fetched in Spain.
+#  - Official incidents, only fetched when the area is in the country:
+#      Spain: the DGT's DATEX II feed (closures, roadworks, accidents, stopped
+#        vehicles and V16 beacons, obstacles, slow traffic, weather), whole country.
+#      France: Bison Fute's DATEX II feed for the national road network, whole country.
+#      Germany: the Autobahn API, asked only about the motorways near the area
+#        (autobahn_cells.json), so it learns which motorways, not where you are.
 #  - Reports by drivers (police, accident, hazard, road closed, traffic jam,
 #    mobile speed camera), shared through public Nostr relays. Each report
 #    and each vote is signed with a fresh one-use key, so nothing links
@@ -20,10 +23,13 @@
 
 import gzip
 import io
+import json
 import math
 import os
+import re
 import threading
 import time
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -61,6 +67,15 @@ DGT_URL = "https://nap.dgt.es/datex2/v3/dgt/SituationPublication/datex2_v37.xml"
 DGT_MAX_AGE = 5*60
 SPAIN = (27.0, -18.5, 44.5, 4.6)   # south, west, north, east
 
+FR_URL = ("https://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR/"
+          "Evenementiel-DIR/grt/RRN/content.xml")
+FR_MAX_AGE = 5*60
+FRANCE = (41.3, -5.2, 51.1, 9.6)
+DE_URL = "https://verkehr.autobahn.de/o/autobahn/%s/services/%s"
+DE_MAX_AGE = 5*60
+DE_MAX_ROADS = 8       # motorways asked about per refresh, the ones the route follows most first
+GERMANY = (47.2, 5.8, 55.1, 15.1)
+
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 _DETAIL_TAGS = ("roadMaintenanceType", "obstructionType", "vehicleObstructionType",
                 "accidentType", "abnormalTrafficType", "poorEnvironmentType",
@@ -73,6 +88,9 @@ _state = {
     "again": False,
     "dgt": [],           # parsed DGT incidents, whole country
     "dgt_time": 0,
+    "fr": [],            # Bison Fute incidents, whole country
+    "fr_time": 0,
+    "de": {},            # motorway -> (fetched_at, incidents)
     "community": {},     # id -> alert
     "votes": {},         # report id -> {voter pubkey: (up, created)}
     "dismissed": set(),  # report ids this phone said are gone
@@ -150,6 +168,42 @@ def _dgt_type(record_type, cause, detail, lanes):
 
 
 def _parse_dgt(stream):
+    return _parse_datex(stream, "dgt", "DGT", _dgt_kind)
+
+
+def _dgt_kind(rtype, f, lanes):
+    return _dgt_type(rtype, f["cause"], f["detail"], lanes)
+
+
+def _fr_kind(rtype, f, lanes):
+    """Bison Fute publishes DATEX II v2: the record type says what it is."""
+    m = f["mgmt"]
+    if rtype == "RoadOrCarriagewayOrLaneManagement":
+        if m in ("roadClosed", "carriagewayClosures", "closedPermanentlyForTheWinter"):
+            return "closed"
+        return "roadworks"
+    return {"Accident": "accident",
+            "VehicleObstruction": "stopped",
+            "AbnormalTraffic": "jam",
+            "WeatherRelatedRoadConditions": "weather",
+            "PoorEnvironmentConditions": "weather",
+            "MaintenanceWorks": "roadworks",
+            "ConstructionWorks": "roadworks",
+            "GeneralObstruction": "hazard",
+            "EnvironmentalObstruction": "hazard",
+            "InfrastructureDamageObstruction": "hazard",
+            "AnimalPresenceObstruction": "hazard"}.get(rtype)
+
+
+def _parse_fr(stream):
+    out = _parse_datex(stream, "bisonfute", "Bison Futé", _fr_kind)
+    for a in out:
+        # "N0100" -> "N100", "A0007" -> "A7"
+        a["road"] = re.sub(r"^([A-Z]+)0+(?=\d)", r"\1", a["road"])
+    return out
+
+
+def _parse_datex(stream, source, agency, kind_of):
     now = time.time()
     out = []
     for _, el in ET.iterparse(stream):
@@ -157,7 +211,7 @@ def _parse_dgt(stream):
             continue
         rtype = (el.get(XSI_TYPE) or "").split(":")[-1]
         f = {"cause": None, "detail": None, "status": None, "start": None, "end": None,
-             "road": "", "km": "", "town": "", "dest": ""}
+             "road": "", "km": "", "town": "", "dest": "", "mgmt": None}
         lanes = []
         points = {}
         for x in el.iter():
@@ -175,7 +229,9 @@ def _parse_dgt(stream):
                 f["end"] = t
             elif n == "laneUsage":
                 lanes.append(t)
-            elif n == "roadName" and not f["road"]:
+            elif n == "roadOrCarriagewayOrLaneManagementType" and not f["mgmt"]:
+                f["mgmt"] = t
+            elif n in ("roadName", "roadNumber") and not f["road"]:
                 f["road"] = t
             elif n == "roadDestination" and not f["dest"]:
                 f["dest"] = t
@@ -195,7 +251,7 @@ def _parse_dgt(stream):
                     points[n] = (float(lat), float(lon))
         rid = el.get("id")
         el.clear()
-        if f["status"] not in (None, "active"):
+        if f["status"] not in (None, "active", "definedByValidityTimeSpec"):
             continue
         start = _parse_time(f["start"]) if f["start"] else 0
         end = _parse_time(f["end"]) if f["end"] else 0
@@ -203,13 +259,16 @@ def _parse_dgt(stream):
             continue
         if end and end < now:
             continue
-        kind = _dgt_type(rtype, f["cause"], f["detail"], lanes)
+        kind = kind_of(rtype, f, lanes)
         if not kind:
+            continue
+        # standing orders with no end, older than a year, aren't news (France lists some from 2023)
+        if not end and start and start < now - 365*86400 and kind != "closed":
             continue
         pt = points.get("from") or points.get("point") or points.get("pointByCoordinates") or points.get("to")
         if not pt:
             continue
-        out.append({"id": "dgt:%s" % rid, "source": "dgt", "type": kind,
+        out.append({"id": "%s:%s" % (source, rid), "source": source, "agency": agency, "type": kind,
                     "lat": pt[0], "lon": pt[1], "created": start, "expires": end,
                     "road": f["road"], "km": f["km"], "town": f["town"], "dest": f["dest"],
                     "detail": f["detail"] or "", "up": 0, "down": 0, "heading": -1})
@@ -405,6 +464,122 @@ def _community_visible():
     return out
 
 
+def _fetch_fr():
+    req = urllib.request.Request(FR_URL, headers={"User-Agent": USER_AGENT,
+                                                  "Accept-Encoding": "gzip"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = netlimit.read_capped(r, netlimit.FEED)
+        gz = r.headers.get("Content-Encoding", "") == "gzip"
+    stream = gzip.GzipFile(fileobj=io.BytesIO(data)) if gz else io.BytesIO(data)
+    return _parse_fr(netlimit.CappedReader(stream, netlimit.FEED_XML))
+
+
+# ------------------------------------------------------------------ Germany
+
+_de_cells = None
+
+
+def _autobahn_cells():
+    global _de_cells
+    if _de_cells is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "autobahn_cells.json"),
+                      encoding="utf-8") as f:
+                roads = json.load(f)["roads"]
+            _de_cells = {k: {tuple(c) for c in v} for k, v in roads.items()}
+        except Exception:
+            _de_cells = {}
+    return _de_cells
+
+
+def _motorways_near(points):
+    """The motorways whose cells the points touch (or a neighbour cell), most cells first."""
+    near = set()
+    for lon, lat in points:
+        cy, cx = int(math.floor(lat * 4)), int(math.floor(lon * 4))
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                near.add((cy + dy, cx + dx))
+    hits = []
+    for road, cells in _autobahn_cells().items():
+        n = len(cells & near)
+        if n:
+            hits.append((-n, road))
+    return [r for _, r in sorted(hits)][:DE_MAX_ROADS]
+
+
+def _de_kind(service, e):
+    text = " ".join(str(x) for x in (e.get("description") or [])) + " " + str(e.get("title") or "")
+    low = text.lower()
+    if service == "closure":
+        # a closed entry or exit only matters to those taking it; driving past it isn't news
+        return "closed" if e.get("display_type") == "CLOSURE" else None
+    if service == "roadworks":
+        return "closed" if str(e.get("isBlocked")).lower() == "true" else "roadworks"
+    if "unfall" in low:
+        return "accident"
+    if "falschfahrer" in low or "gegenst" in low or "glätte" in low or "glaette" in low:
+        return "hazard"
+    if "panne" in low or "liegengeblieben" in low:
+        return "stopped"
+    if e.get("abnormalTrafficType") or "stau" in low or "verkehrslage" in low:
+        return "jam"
+    return "hazard"
+
+
+def _parse_de(road, service, data):
+    out = []
+    items = data.get(service) if isinstance(data, dict) else None
+    for e in items if isinstance(items, list) else []:
+        if not isinstance(e, dict) or str(e.get("future")).lower() == "true":
+            continue
+        c = e.get("coordinate") or {}
+        try:
+            lat, lon = float(c["lat"]), float(c["long"])
+        except Exception:
+            continue
+        if not _in_bbox(lat, lon, GERMANY):
+            continue
+        kind = _de_kind(service, e)
+        if not kind:
+            continue
+        title = str(e.get("title") or "")
+        out.append({"id": "autobahn:%s" % str(e.get("identifier") or "")[:120], "source": "autobahn",
+                    "agency": "Autobahn", "type": kind, "lat": lat, "lon": lon,
+                    "created": _parse_time(str(e.get("startTimestamp") or "")), "expires": 0,
+                    "road": road, "km": "", "town": title.split("|", 1)[-1].strip()[:80],
+                    "dest": str(e.get("subtitle") or "").strip()[:80], "detail": "",
+                    "up": 0, "down": 0, "heading": -1})
+    return out
+
+
+def _fetch_de_road(road):
+    out = []
+    for service in ("warning", "closure", "roadworks"):
+        req = urllib.request.Request(DE_URL % (urllib.parse.quote(road), service),
+                                     headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(netlimit.read_capped(r, netlimit.FEED).decode("utf-8"))
+        out += _parse_de(road, service, data)
+    return out
+
+
+def _germany(points, errors):
+    result = []
+    for road in _motorways_near(points):
+        hit = _state["de"].get(road)
+        if not hit or time.time() - hit[0] > DE_MAX_AGE:
+            try:
+                hit = (time.time(), _fetch_de_road(road))
+                _state["de"][road] = hit
+            except Exception as e:
+                errors.append("Autobahn %s: %s" % (road, e))
+                if not hit:
+                    continue
+        result += hit[1]
+    return result
+
+
 # ------------------------------------------------------------------ worker
 
 def _work():
@@ -416,7 +591,7 @@ def _work():
         errors = []
         if points:
             box = _bbox(points, 0.05)
-            # official incidents, Spain only
+            # official incidents, where the country publishes them
             if any(_in_bbox(p[1], p[0], SPAIN) for p in points):
                 if time.time() - _state["dgt_time"] > DGT_MAX_AGE:
                     try:
@@ -425,6 +600,17 @@ def _work():
                     except Exception as e:
                         errors.append("DGT: %s" % e)
                 result += [a for a in _state["dgt"] if _in_bbox(a["lat"], a["lon"], box)]
+            if any(_in_bbox(p[1], p[0], FRANCE) for p in points):
+                if time.time() - _state["fr_time"] > FR_MAX_AGE:
+                    try:
+                        _state["fr"] = _fetch_fr()
+                        _state["fr_time"] = time.time()
+                    except Exception as e:
+                        errors.append("Bison Futé: %s" % e)
+                result += [a for a in _state["fr"] if _in_bbox(a["lat"], a["lon"], box)]
+            inside = [p for p in points if _in_bbox(p[1], p[0], GERMANY)]
+            if inside:
+                result += [a for a in _germany(inside, errors) if _in_bbox(a["lat"], a["lon"], box)]
             # drivers' reports
             try:
                 since = int(time.time()) - 4*3600

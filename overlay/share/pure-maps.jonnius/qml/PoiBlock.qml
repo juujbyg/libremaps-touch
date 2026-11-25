@@ -72,7 +72,7 @@ Column {
     }
 
     // LibreMaps: Waze-style place sheet. Name, chips, address, action tiles,
-    // fuel prices for Spanish stations, and one big "View routes" button.
+    // fuel prices where the country publishes them, and one big "View routes" button.
     property real   u: styler.themePaddingMedium
     property real   margin: styler.themeHorizontalPageMargin
     property var    extra: null           // from poor.placeinfo.lookup
@@ -289,7 +289,7 @@ Column {
     }
 
     Column {
-        // fuel prices: Spain's Ministry data for the station at this place
+        // fuel prices: the country's open data for the station at this place (poor/fuelprices.py)
         anchors.left: parent.left
         anchors.right: parent.right
         topPadding: item.u * 2
@@ -301,25 +301,24 @@ Column {
             x: item.margin
 
             Text {
+                id: fuelTitle
                 anchors.verticalCenter: parent.verticalCenter
                 color: styler.ink
                 font.family: styler.themeFontFamily
                 font.pixelSize: Math.round(item.u * 1.75)
                 font.weight: Font.DemiBold
-                text: app.tr("Fuel prices (€/L)")
+                text: app.tr("Fuel prices (%1)").arg(item.extra && item.extra.fuel_unit ? item.extra.fuel_unit : "€/L")
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 color: styler.muted
                 font.family: styler.themeFontFamily
                 font.pixelSize: Math.round(item.u * 1.15)
-                text: {
-                    if (!item.extra || !item.extra.fuel_date) return "";
-                    // "19/11/2026 0:42:42" -> "19/11 0:42"
-                    var p = item.extra.fuel_date.split(" ");
-                    var d = p[0].split("/");
-                    return app.tr("Ministry data, %1").arg(d[0] + "/" + d[1] + " " + (p[1] || "").split(":").slice(0, 2).join(":"));
-                }
+                elide: Text.ElideRight
+                width: Math.max(0, Math.min(implicitWidth, item.width - 2 * item.margin - fuelTitle.width - parent.spacing))
+                // the country's open data source, and when the station last updated
+                text: !item.extra ? "" : (item.extra.fuel_source || "") +
+                      (item.extra.fuel_date ? " · " + item.extra.fuel_date : "")
             }
         }
 

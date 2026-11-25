@@ -2,9 +2,9 @@
 
 # LibreMaps: extra facts for the place sheet, Waze style.
 #
-# - Fuel stations in Spain: prices and opening hours from the Ministry's open data
-#   (geoportalgasolineras.es REST service, no key). The app downloads a whole province
-#   at a time, so the service only learns the province, never the place.
+# - Fuel stations: prices from each country's open data, see poor/fuelprices.py (Spain,
+#   France, Italy, Portugal, Austria, Slovenia, Mexico). In Spain the same data has the
+#   station's opening hours.
 # - Other places: OpenStreetMap's opening_hours, phone and website, from one Nominatim
 #   search around the place (at most one request a second, as its policy asks), or
 #   Overpass when Nominatim has nothing.
@@ -27,38 +27,22 @@ import urllib.parse
 import urllib.request
 
 import poor
+from poor import fuelprices
 
 __all__ = ("lookup", "request", "parse_osm_hours", "parse_es_hours", "status")
 
 USER_AGENT = "LibreMaps (open source maps for Ubuntu Touch)"
-FUEL_URL = ("https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/"
-            "PreciosCarburantes/EstacionesTerrestres/FiltroProvincia/%s")
-FUEL_MAX_AGE = 6 * 3600
-FUEL_MATCH_M = 150
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 OVERPASS = ("https://overpass.kumi.systems/api/interpreter",
             "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
             "https://overpass-api.de/api/interpreter")
 
 # the middle of each province's stations, to guess the province when a place has no postcode
-PROVINCES = {"01":(42.85,-2.7),"02":(38.95,-1.87),"03":(38.38,-0.53),"04":(36.99,-2.41),"05":(40.64,-4.79),"06":(38.74,-6.34),"07":(39.57,2.85),"08":(41.48,2.09),"09":(42.31,-3.6),"10":(39.75,-6.09),"11":(36.5,-5.95),"12":(40.05,-0.06),"13":(38.98,-3.56),"14":(37.77,-4.73),"15":(43.16,-8.47),"16":(39.74,-2.34),"17":(42.07,2.84),"18":(37.19,-3.5),"19":(40.7,-3.01),"20":(43.23,-2.09),"21":(37.39,-6.88),"22":(42.04,-0.03),"23":(37.97,-3.6),"24":(42.55,-5.88),"25":(41.8,0.9),"26":(42.38,-2.37),"27":(43.08,-7.5),"28":(40.37,-3.69),"29":(36.7,-4.62),"30":(37.82,-1.23),"31":(42.62,-1.72),"32":(42.24,-7.74),"33":(43.43,-5.88),"34":(42.23,-4.48),"35":(28.22,-14.98),"36":(42.14,-8.39),"37":(40.86,-5.86),"38":(28.34,-16.65),"39":(43.1,-3.84),"40":(41.09,-4.12),"41":(37.36,-5.8),"42":(41.63,-2.53),"43":(41.06,1.02),"44":(40.67,-0.78),"45":(39.9,-4.04),"46":(39.36,-0.48),"47":(41.59,-4.79),"48":(43.27,-2.88),"49":(41.72,-5.78),"50":(41.64,-1.04),"51":(35.89,-5.32),"52":(35.28,-2.94)}
 
-# Ministry field -> short name on the price tiles, in the order shown
-FUELS = (("Precio Gasoleo A", "Diesel"),
-         ("Precio Gasolina 95 E5", "95"),
-         ("Precio Gasolina 98 E5", "98"),
-         ("Precio Gasoleo Premium", "Diesel+"),
-         ("Precio Gasolina 95 E10", "95 E10"),
-         ("Precio Gasolina 95 E5 Premium", "95+"),
-         ("Precio Gases licuados del petróleo", "LPG"),
-         ("Precio Gas Natural Comprimido", "CNG"),
-         ("Precio Diésel Renovable", "HVO"),
-         ("Precio Adblue", "AdBlue"))
 
 _lock = threading.Lock()
 _nominatim_lock = threading.Lock()
 _nominatim_last = [0.0]
-_mem = {}          # province -> (fetched_at, data)
 
 
 def _dist(lat1, lon1, lat2, lon2):
@@ -74,11 +58,18 @@ def in_spain(lat, lon):
            (35.1 <= lat <= 35.95 and -5.45 <= lon <= -2.85)
 
 
+_ZONES = {"fr": "Europe/Paris", "it": "Europe/Rome", "pt": "Europe/Lisbon",
+          "at": "Europe/Vienna", "si": "Europe/Ljubljana"}
+
+
 def _tz(lat, lon):
     try:
         from zoneinfo import ZoneInfo
         if in_spain(lat, lon):
             return ZoneInfo("Atlantic/Canary" if lat < 30 else "Europe/Madrid")
+        for c in fuelprices.country_at(lat, lon):
+            if c[0] in _ZONES:
+                return ZoneInfo(_ZONES[c[0]])
     except Exception:
         pass
     return None
@@ -221,76 +212,20 @@ def status(week, now):
 # ---------------------------------------------------------------- fuel (Spain)
 
 def _province_guess(lat, lon, postcode):
-    pc = re.sub(r"\D", "", postcode or "")
-    if len(pc) == 5 and pc[:2] in PROVINCES:
-        return [pc[:2]]
-    near = sorted(PROVINCES, key=lambda k: _dist(lat, lon, *PROVINCES[k]))
-    return near[:2]
-
-
-def _province(pid):
-    with _lock:
-        hit = _mem.get(pid)
-        if hit and time.time() - hit[0] < FUEL_MAX_AGE:
-            return hit[1]
-    path = os.path.join(poor.CACHE_HOME_DIR, "fuel-%s.json" % pid)
-    data = None
-    try:
-        if time.time() - os.path.getmtime(path) < FUEL_MAX_AGE:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-    except Exception:
-        data = None
-    if data is None:
-        try:
-            req = urllib.request.Request(FUEL_URL % pid, headers={
-                "User-Agent": USER_AGENT, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=12) as r:
-                raw = r.read(8 * 1024 * 1024)
-            full = json.loads(raw.decode("utf-8"))
-            data = {"date": full.get("Fecha", ""), "stations": []}
-            for e in full.get("ListaEESSPrecio", []):
-                try:
-                    lat = float(e["Latitud"].replace(",", "."))
-                    lon = float(e["Longitud (WGS84)"].replace(",", "."))
-                except Exception:
-                    continue
-                prices = [[name, e.get(key, "").replace(",", ".")] for key, name in FUELS if e.get(key)]
-                data["stations"].append([lat, lon, e.get("Rótulo", ""), e.get("Horario", ""), prices])
-            os.makedirs(poor.CACHE_HOME_DIR, exist_ok=True)
-            tmp = path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-            os.replace(tmp, path)
-        except Exception:
-            return None
-    with _lock:
-        _mem[pid] = (time.time(), data)
-    return data
+    return fuelprices.es_provinces(lat, lon, postcode)
 
 
 def _is_fuel(poi_type, title):
     t = (poi_type or "").lower()
-    return any(w in t for w in ("fuel", "gasolin", "carbur", "petrol", "gas station", "tankstelle", "station-service"))
+    return any(w in t for w in ("fuel", "gasolin", "carbur", "petrol", "gas station", "tankstelle",
+                                "station-service", "distributore", "combust", "bencin", "tankovaln"))
 
 
 def fuel_station(lat, lon, title, postcode, poi_type):
-    """The Ministry's entry for the station at this place, or None."""
-    if not in_spain(lat, lon):
+    """The open-data entry for the fuel station at this place, or None."""
+    if not _is_fuel(poi_type, title):
         return None
-    fuel = _is_fuel(poi_type, title)
-    for pid in _province_guess(lat, lon, postcode):
-        data = _province(pid) if fuel else None
-        if not data:
-            continue
-        best, best_d = None, FUEL_MATCH_M
-        for s in data["stations"]:
-            d = _dist(lat, lon, s[0], s[1])
-            if d < best_d:
-                best, best_d = s, d
-        if best:
-            return {"brand": best[2], "hours": best[3], "prices": best[4], "date": data.get("date", "")}
-    return None
+    return fuelprices.station(lat, lon, postcode)
 
 
 # ---------------------------------------------------------------- OpenStreetMap
@@ -349,10 +284,13 @@ def _when(lat, lon):
     return _now(lat, lon)
 
 
-def lookup(x, y, title, poi_type, postcode):
-    """Everything extra for the sheet: {"hours", "fuel", "fuel_date", "phone", "website"}."""
+def lookup(x, y, title, poi_type, postcode, early=None):
+    """Everything extra for the sheet: {"hours", "fuel", "fuel_date", "fuel_source",
+    "fuel_unit", "phone", "website"}. early(partial) gets the fuel prices first, when
+    the opening hours still have to be looked up."""
     lat, lon = float(y), float(x)
-    out = {"hours": None, "fuel": [], "fuel_date": "", "phone": "", "website": ""}
+    out = {"hours": None, "fuel": [], "fuel_date": "", "fuel_source": "", "fuel_unit": "",
+           "phone": "", "website": ""}
     week = None
     try:
         st = fuel_station(lat, lon, title, postcode, poi_type)
@@ -361,7 +299,13 @@ def lookup(x, y, title, poi_type, postcode):
     if st:
         out["fuel"] = [{"name": n, "price": p} for n, p in st["prices"]]
         out["fuel_date"] = st["date"]
-        week = parse_es_hours(st["hours"])
+        out["fuel_source"] = st["source"]
+        out["fuel_unit"] = st["unit"]
+        if st["country"] == "es":
+            week = parse_es_hours(st["hours"])
+        if week is None and early:
+            # show the prices now; the OpenStreetMap lookup for hours can take many seconds
+            early(dict(out))
     if week is None:
         try:
             tags = osm_tags(lat, lon, title)
@@ -377,14 +321,23 @@ def lookup(x, y, title, poi_type, postcode):
 
 def request(key, x, y, title, poi_type, postcode):
     """Look up on a thread (a download can take seconds) and answer with a "placeinfo.ready" event."""
-    def work():
-        try:
-            result = lookup(x, y, title, poi_type, postcode)
-        except Exception:
-            result = None
+    def send(result):
         try:
             import pyotherside
             pyotherside.send("placeinfo.ready", key, result)
         except Exception:
             pass
+
+    sent = []
+
+    def early(partial):
+        sent.append(partial)
+        send(partial)
+
+    def work():
+        try:
+            result = lookup(x, y, title, poi_type, postcode, early=early)
+        except Exception:
+            result = sent[-1] if sent else None   # keep the prices already shown
+        send(result)
     threading.Thread(target=work, daemon=True).start()

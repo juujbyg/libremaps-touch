@@ -4,7 +4,9 @@ LibreMaps: third-party components and their licences
 LibreMaps is free software under the GNU General Public License, version 3 or later
 (see LICENSE). It is a fork of Pure Maps and ships the components below. Map data
 comes from OpenStreetMap contributors (ODbL) and is credited on the map
-("Map credits" in the menu).
+("Map credits" in the menu). poor/autobahn_cells.json, the list of areas each German motorway
+passes through, is derived from OpenStreetMap data (ODbL, (c) OpenStreetMap contributors) by
+tools/autobahn_cells.py.
 
 Pure Maps 3.5.0
   Copyright Osmo Salomaa, Rinigus and contributors

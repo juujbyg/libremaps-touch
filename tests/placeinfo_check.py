@@ -57,15 +57,26 @@ check("province from postcode", pi._province_guess(40.4, -3.7, "28050"), ["28"])
 check("province guess", pi._province_guess(41.39, 2.17, "")[0], "08")
 
 # a fake Madrid province file, as the cache would hold it
-cache = {"date": "19/11/2026 0:42:42", "stations": [
-    [40.4170, -3.7036, "REPSOL", "L-D: 24H", [["Diesel", "1.935"], ["95", "1.719"]]],
-    [40.4300, -3.7036, "SHELL", "L-V: 06:00-22:00", [["Diesel", "1.899"]]]]}
-with open(os.path.join(poor.CACHE_HOME_DIR, "fuel-28.json"), "w", encoding="utf-8") as f:
+cache = {"stations": [
+    [40.4170, -3.7036, "REPSOL", "L-D: 24H", [["Diesel", "1.935"], ["95", "1.719"]], "19/11 00:42"],
+    [40.4300, -3.7036, "SHELL", "L-V: 06:00-22:00", [["Diesel", "1.899"]], "19/11 00:42"]]}
+with open(os.path.join(poor.CACHE_HOME_DIR, "fuel-es-28.json"), "w", encoding="utf-8") as f:
     json.dump(cache, f)
 st = pi.fuel_station(40.4169, -3.7035, "Repsol", "28013", "Fuel station")
 check("station matched", st and st["prices"], [["Diesel", "1.935"], ["95", "1.719"]])
+check("source and unit", st and (st["source"], st["unit"], st["date"]), ("MITECO", "€/L", "19/11 00:42"))
 check("not a fuel place", pi.fuel_station(40.4169, -3.7035, "Bar", "28013", "Bar or pub"), None)
 check("too far", pi.fuel_station(40.4230, -3.7035, "Repsol", "28013", "Fuel station"), None)
+
+# prices go out before the slow OpenStreetMap lookup for opening hours
+from poor import fuelprices  # noqa: E402
+fuelprices.station = lambda lat, lon, postcode="": {"country": "fr", "brand": "", "hours": "",
+    "prices": [["Diesel", "1.759"]], "date": "24/11 08:15", "source": "prix-carburants.gouv.fr", "unit": "EUR/L"}
+order = []
+pi.osm_tags = lambda lat, lon, title: order.append("osm") or {"opening_hours": "24/7"}
+res = pi.lookup(2.3523, 48.8567, "Total", "Fuel", "", early=lambda r: order.append(("early", r["fuel"])))
+check("early prices before hours", order, [("early", [{"name": "Diesel", "price": "1.759"}]), "osm"])
+check("final reply has both", (res["fuel_source"], res["hours"] is not None), ("prix-carburants.gouv.fr", True))
 
 print("all passed" if not failures else "%d failed" % failures)
 sys.exit(1 if failures else 0)

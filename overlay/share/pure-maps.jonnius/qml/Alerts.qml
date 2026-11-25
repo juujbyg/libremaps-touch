@@ -4,7 +4,7 @@
  *
  * Gathers alerts for the area being watched (the route ahead while
  * navigating, otherwise the visible map):
- *  - official incidents from Spain's DGT and reports by other drivers
+ *  - official incidents (Spain's DGT, France's Bison Futé, Germany's Autobahn API) and reports by other drivers
  *    through Nostr relays (poor/alerts.py), if "Traffic alerts" is on
  *  - fixed speed cameras from OpenStreetMap (RoadWatch.qml), if "Road
  *    alerts" is on
@@ -188,7 +188,8 @@ Item {
                 var d = dist(a.lat, a.lon, r[j].latitude, r[j].longitude);
                 if (d < best) { best = d; bi = j; }
             }
-            var near = (a.source === "dgt") ? 120 : 70;
+            // official incidents sit on the road's centre line or a kilometre point, so allow more
+            var near = a.agency ? 120 : 70;
             if (bi < 0 || best > near) continue;
             if (a.heading >= 0 && bi < r.length - 1) {
                 // a report made going the other way is for the other side
@@ -336,9 +337,10 @@ Item {
 
     function subtitle(a) {
         if (!a) return "";
-        if (a.source === "dgt") {
+        if (a.agency) {
+            // DGT (Spain), Bison Futé (France), Autobahn (Germany)
             var where = a.road ? a.road + (a.km ? " km " + a.km : "") : (a.town || "");
-            return where ? "DGT · " + where : "DGT";
+            return where ? a.agency + " · " + where : a.agency;
         }
         if (a.source === "osm") return app.tr("Fixed camera");
         var mins = Math.max(1, Math.round((Date.now() / 1000 - a.created) / 60));
