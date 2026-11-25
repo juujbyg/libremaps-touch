@@ -31,7 +31,8 @@ Item {
     id: main
 
     height: item.height
-    width: parent.width
+    // a row being removed from a list loses its parent first
+    width: parent ? parent.width : 0
 
     property real contentHeight
     property bool highlighted: false
