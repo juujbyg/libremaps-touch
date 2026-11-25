@@ -112,6 +112,7 @@ Item {
                 font.family: styler.themeFontFamily
                 font.pixelSize: banner.u * 1.15
                 text: alertWatch.subtitle(banner.alert)
+                textFormat: Text.PlainText   // feed text: markup must never load anything
                 width: parent.width
             }
         }

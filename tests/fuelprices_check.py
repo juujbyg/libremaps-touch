@@ -47,7 +47,7 @@ MX_PRICES = b"""<?xml version="1.0" encoding="utf-8"?><places>
 <place place_id="9999"><gas_price type="regular">22</gas_price></place></places>"""
 
 
-def fake_get(url, timeout=30, accept=""):
+def fake_get(url, timeout=30, accept="", cap=None):
     asked.append(url)
     if "data.economie.gouv.fr" in url:
         return json.dumps([
@@ -144,7 +144,7 @@ fp.station(41.9001, 12.5001)
 check("cached on disk", len(asked), n)
 
 # a dead service is just no prices
-def broken(url, timeout=30, accept=""):
+def broken(url, timeout=30, accept="", cap=None):
     raise OSError("network down")
 fp._get = broken
 fp._mem.clear()

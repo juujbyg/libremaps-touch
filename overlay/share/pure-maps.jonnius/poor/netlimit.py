@@ -8,7 +8,8 @@
 REPLY = 64 << 20        # routes, search and place replies; a long Valhalla route is a few MB
 TILE = 16 << 20         # one offline tile, font range, sprite or TileJSON
 FEED = 16 << 20         # the DGT incident feed, compressed (about 0.25 MB in 2026)
-FEED_XML = 256 << 20    # the same feed once decompressed
+FEED_XML = 64 << 20     # the same feed once decompressed (DGT: 6.5 MB in 2026)
+JSON_DENSITY = 16       # bytes per JSON object or list, at least (real replies: 44 or more)
 
 
 class TooLarge(ValueError):
@@ -26,6 +27,15 @@ def read_capped(response, limit):
         total += len(chunk)
         if total > limit:
             raise TooLarge("the server sent more than %s" % _size(limit))
+
+
+def json_loads(data):
+    """json.loads for a capped reply, refusing one made mostly of tiny objects or lists:
+    those cost Python 20 to 70 times their size in memory (15 MB of "{}," took 750 MB)."""
+    if data.count(b"[") + data.count(b"{") > len(data) // JSON_DENSITY + 64:
+        raise TooLarge("the reply is made of too many tiny objects")
+    import json
+    return json.loads(data.decode("utf-8"))
 
 
 class CappedReader:

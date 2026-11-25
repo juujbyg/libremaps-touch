@@ -45,7 +45,8 @@ __all__ = ("station", "country_at", "COUNTRIES")
 
 USER_AGENT = "LibreMaps (open source maps for Ubuntu Touch; +https://github.com/juujbyg/libremaps-touch)"
 MATCH_M = 150          # the station must be this close to the place
-CAP = 32 << 20         # one download; the national files are 2 to 5 MB
+CAP = 16 << 20         # one file download; the national files are 2 to 4 MB
+JSON_CAP = 6 << 20     # one JSON reply; the largest seen is Portugal's at 1.1 MB
 
 _lock = threading.Lock()
 _mem = {}              # cache key -> (fetched_at, data)
@@ -59,14 +60,33 @@ def _dist(lat1, lon1, lat2, lon2):
     return 6371000 * math.hypot(x, y)
 
 
-def _get(url, timeout=30, accept="application/json"):
+def _get(url, timeout=30, accept="application/json", cap=CAP):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return netlimit.read_capped(r, CAP)
+        return netlimit.read_capped(r, cap)
 
 
 def _json(url, timeout=30):
-    return json.loads(_get(url, timeout).decode("utf-8"))
+    return netlimit.json_loads(_get(url, timeout, cap=JSON_CAP))
+
+
+def _rows(value):
+    """The dicts of a list from a reply; anything else in it is skipped."""
+    return [e for e in value if isinstance(e, dict)] if isinstance(value, list) else []
+
+
+def _coord(lat, lon):
+    """(lat, lon) as floats, or ValueError when they aren't a real place."""
+    lat, lon = float(lat), float(lon)
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):   # also false for NaN
+        raise ValueError("not a place")
+    return lat, lon
+
+
+def _text(value, n=80):
+    """A name from a reply as plain, short text: no control characters, no "<" (starts markup)."""
+    s = re.sub(r"[\x00-\x1f\x7f<]+", " ", value if isinstance(value, str) else "")
+    return " ".join(s.split())[:n]
 
 
 def _price(text):
@@ -178,14 +198,13 @@ def _es_fetch(pid):
     full = _json(ES_URL % pid, timeout=15)
     when = _show(_parse_dt(full.get("Fecha", ""), "%d/%m/%Y %H:%M:%S"), None)
     out = []
-    for e in full.get("ListaEESSPrecio", []):
+    for e in _rows(full.get("ListaEESSPrecio")):
         try:
-            lat = float(e["Latitud"].replace(",", "."))
-            lon = float(e["Longitud (WGS84)"].replace(",", "."))
+            lat, lon = _coord(e["Latitud"].replace(",", "."), e["Longitud (WGS84)"].replace(",", "."))
         except Exception:
             continue
         prices = [[name, _price(e.get(key))] for key, name in ES_FUELS if _price(e.get(key))]
-        out.append([lat, lon, e.get("Rótulo", ""), e.get("Horario", ""), prices, when])
+        out.append([lat, lon, _text(e.get("Rótulo")), _text(e.get("Horario"), 300), prices, when])
     return {"stations": out}
 
 
@@ -208,10 +227,10 @@ def _fr_fetch(clat, clon):
     fields = ["id", "geom", "adresse"] + ["%s_%s" % (k, s) for k, _ in FR_FUELS for s in ("prix", "maj")]
     rows = _json(FR_URL + urllib.parse.urlencode({"where": where, "select": ",".join(fields)}))
     out = []
-    for r in rows if isinstance(rows, list) else []:
+    for r in _rows(rows):
         g = r.get("geom") or {}
         try:
-            lat, lon = float(g["lat"]), float(g["lon"])
+            lat, lon = _coord(g["lat"], g["lon"])
         except Exception:
             continue
         prices = [[name, _price(r.get(k + "_prix"))] for k, name in FR_FUELS if _price(r.get(k + "_prix"))]
@@ -266,7 +285,7 @@ def _it_fetch():
         if len(row) < 10:
             continue
         try:
-            where[row[0]] = (float(row[-2]), float(row[-1]), row[2])
+            where[row[0]] = _coord(row[-2], row[-1]) + (_text(row[2]),)
         except ValueError:
             continue
     best = {}   # (id, fuel) -> (self?, price, date)
@@ -311,15 +330,15 @@ PT_FUELS = ((2101, "Diesel"), (3201, "95"), (3405, "98"), (2105, "Diesel+"), (11
 def _pt_fetch():
     stations = {}
     for code, name in PT_FUELS:
-        for e in _json(PT_URL % code, timeout=60).get("resultado") or []:
+        for e in _rows(_json(PT_URL % code, timeout=60).get("resultado")):
             try:
-                lat, lon = float(e["Latitude"]), float(e["Longitude"])
+                lat, lon = _coord(e["Latitude"], e["Longitude"])
             except Exception:
                 continue
             price = _price(e.get("Preco"))
             if not price:
                 continue
-            s = stations.setdefault(e.get("Id"), [lat, lon, e.get("Marca") or "", "", [], None])
+            s = stations.setdefault(str(e.get("Id"))[:40], [lat, lon, _text(e.get("Marca")), "", [], None])
             s[4].append([name, price])
             d = _parse_dt(e.get("DataAtualizacao", ""), "%Y-%m-%d %H:%M")
             if d and (s[5] is None or d > s[5]):
@@ -344,16 +363,16 @@ def _at_fetch(clat, clon):
     stations = {}
     for code, name in AT_FUELS:
         rows = _json(AT_URL % (clat, clon, code), timeout=15)
-        for e in rows if isinstance(rows, list) else []:
+        for e in _rows(rows):
             loc = e.get("location") or {}
             try:
-                lat, lon = float(loc["latitude"]), float(loc["longitude"])
+                lat, lon = _coord(loc["latitude"], loc["longitude"])
             except Exception:
                 continue
-            for p in e.get("prices") or []:
+            for p in _rows(e.get("prices")):
                 price = _price(p.get("amount"))
                 if price:
-                    s = stations.setdefault(e.get("id"), [lat, lon, e.get("name") or "", "", [], ""])
+                    s = stations.setdefault(str(e.get("id"))[:40], [lat, lon, _text(e.get("name")), "", [], ""])
                     s[4].append([name, price])
     when = _show(datetime.datetime.now(datetime.timezone.utc), "Europe/Vienna")
     for s in stations.values():
@@ -379,17 +398,18 @@ def _si_fetch(clat, clon):
     while url and pages < 10:
         page = _json(url, timeout=15)
         pages += 1
-        for e in page.get("results") or []:
+        for e in _rows(page.get("results")):
             try:
-                lat, lon = float(e["lat"]), float(e["lng"])
+                lat, lon = _coord(e["lat"], e["lng"])
             except Exception:
                 continue
-            p = e.get("prices") or {}
+            p = e.get("prices")
+            p = p if isinstance(p, dict) else {}
             prices = [[name, _price(p.get(k))] for k, name in SI_FUELS if _price(p.get(k))]
             if prices:
-                out.append([lat, lon, e.get("name") or "", "", prices, ""])
+                out.append([lat, lon, _text(e.get("name")), "", prices, ""])
         url = page.get("next")
-        if url and not url.startswith("https://goriva.si/"):
+        if url and not (isinstance(url, str) and url.startswith("https://goriva.si/")):
             break
     return {"stations": out}
 
@@ -412,9 +432,8 @@ def _mx_fetch():
         if el.tag != "place":
             continue
         try:
-            where[el.get("place_id")] = (float(el.findtext("location/y")),
-                                         float(el.findtext("location/x")),
-                                         (el.findtext("name") or "").strip())
+            where[el.get("place_id")] = _coord(el.findtext("location/y"), el.findtext("location/x")) + \
+                (_text(el.findtext("name")),)
         except (TypeError, ValueError):
             pass
         el.clear()

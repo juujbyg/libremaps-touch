@@ -74,6 +74,9 @@ FRANCE = (41.3, -5.2, 51.1, 9.6)
 DE_URL = "https://verkehr.autobahn.de/o/autobahn/%s/services/%s"
 DE_MAX_AGE = 5*60
 DE_MAX_ROADS = 8       # motorways asked about per refresh, the ones the route follows most first
+DE_CAP = 6 << 20       # one Autobahn reply (about 0.1 MB in 2026)
+MAX_OFFICIAL = 20000   # alerts kept from one feed (DGT: about 1,500 records in 2026)
+MAX_RECORD_ELEMENTS = 2000   # a real situationRecord has about 50 to 150
 GERMANY = (47.2, 5.8, 55.1, 15.1)
 
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
@@ -203,76 +206,121 @@ def _parse_fr(stream):
     return out
 
 
+def _clean(value, n=80):
+    """Text from a feed as plain, short text: no control characters and no "<", which starts
+    every markup tag ("->" in "Halle -> Nürnberg" stays)."""
+    s = re.sub(r"[\x00-\x1f\x7f<]+", " ", value if isinstance(value, str) else "")
+    return " ".join(s.split())[:n]
+
+
+def _coord(lat, lon):
+    """(lat, lon) as floats, or None when they aren't a real place (NaN, out of range, junk)."""
+    try:
+        lat, lon = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return None
+    return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
+
+
 def _parse_datex(stream, source, agency, kind_of):
+    """Read a DATEX II feed one situationRecord at a time. Every element is dropped from the
+    tree once read, so a feed of any shape costs little memory; records with thousands of
+    elements are skipped, and at most MAX_OFFICIAL alerts are kept."""
     now = time.time()
     out = []
-    for _, el in ET.iterparse(stream):
-        if _local_name(el.tag) != "situationRecord":
+    stack = []          # the open elements
+    rec, rec_size = None, 0
+    for ev, el in ET.iterparse(stream, events=("start", "end")):
+        if ev == "start":
+            stack.append(el)
+            if rec is None:
+                if _local_name(el.tag) == "situationRecord":
+                    rec, rec_size = el, 0
+            else:
+                rec_size += 1
             continue
-        rtype = (el.get(XSI_TYPE) or "").split(":")[-1]
-        f = {"cause": None, "detail": None, "status": None, "start": None, "end": None,
-             "road": "", "km": "", "town": "", "dest": "", "mgmt": None}
-        lanes = []
-        points = {}
-        for x in el.iter():
-            n = _local_name(x.tag)
-            t = (x.text or "").strip()
-            if n == "causeType" and not f["cause"]:
-                f["cause"] = t
-            elif n in _DETAIL_TAGS and not f["detail"]:
-                f["detail"] = t
-            elif n == "validityStatus":
-                f["status"] = t
-            elif n == "overallStartTime":
-                f["start"] = t
-            elif n == "overallEndTime":
-                f["end"] = t
-            elif n == "laneUsage":
-                lanes.append(t)
-            elif n == "roadOrCarriagewayOrLaneManagementType" and not f["mgmt"]:
-                f["mgmt"] = t
-            elif n in ("roadName", "roadNumber") and not f["road"]:
-                f["road"] = t
-            elif n == "roadDestination" and not f["dest"]:
-                f["dest"] = t
-            elif n == "kilometerPoint" and not f["km"]:
-                f["km"] = t
-            elif n == "municipality" and not f["town"]:
-                f["town"] = t
-            elif n in ("from", "to", "pointByCoordinates", "point"):
-                lat = lon = None
-                for y in x.iter():
-                    ln = _local_name(y.tag)
-                    if ln == "latitude" and lat is None:
-                        lat = y.text
-                    elif ln == "longitude" and lon is None:
-                        lon = y.text
-                if lat and lon and n not in points:
-                    points[n] = (float(lat), float(lon))
-        rid = el.get("id")
+        stack.pop()
+        if el is rec:
+            rec = None
+            if rec_size <= MAX_RECORD_ELEMENTS:
+                a = _datex_record(el, now, source, agency, kind_of)
+                if a:
+                    out.append(a)
+                    if len(out) >= MAX_OFFICIAL:
+                        break
+        elif rec is not None and rec_size <= MAX_RECORD_ELEMENTS:
+            continue    # part of the record being read
         el.clear()
-        if f["status"] not in (None, "active", "definedByValidityTimeSpec"):
-            continue
-        start = _parse_time(f["start"]) if f["start"] else 0
-        end = _parse_time(f["end"]) if f["end"] else 0
-        if start and start > now + 600:
-            continue
-        if end and end < now:
-            continue
-        kind = kind_of(rtype, f, lanes)
-        if not kind:
-            continue
-        # standing orders with no end, older than a year, aren't news (France lists some from 2023)
-        if not end and start and start < now - 365*86400 and kind != "closed":
-            continue
-        pt = points.get("from") or points.get("point") or points.get("pointByCoordinates") or points.get("to")
-        if not pt:
-            continue
-        out.append({"id": "%s:%s" % (source, rid), "source": source, "agency": agency, "type": kind,
-                    "lat": pt[0], "lon": pt[1], "created": start, "expires": end,
-                    "road": f["road"], "km": f["km"], "town": f["town"], "dest": f["dest"],
-                    "detail": f["detail"] or "", "up": 0, "down": 0, "heading": -1})
+        if stack and len(stack[-1]) and stack[-1][-1] is el:
+            del stack[-1][-1]
     return out
+
+
+def _datex_record(el, now, source, agency, kind_of):
+    rtype = (el.get(XSI_TYPE) or "").split(":")[-1]
+    f = {"cause": None, "detail": None, "status": None, "start": None, "end": None,
+         "road": "", "km": "", "town": "", "dest": "", "mgmt": None}
+    lanes = []
+    points = {}
+    for x in el.iter():
+        n = _local_name(x.tag)
+        t = (x.text or "").strip()
+        if n == "causeType" and not f["cause"]:
+            f["cause"] = t
+        elif n in _DETAIL_TAGS and not f["detail"]:
+            f["detail"] = t
+        elif n == "validityStatus":
+            f["status"] = t
+        elif n == "overallStartTime":
+            f["start"] = t
+        elif n == "overallEndTime":
+            f["end"] = t
+        elif n == "laneUsage":
+            lanes.append(t)
+        elif n == "roadOrCarriagewayOrLaneManagementType" and not f["mgmt"]:
+            f["mgmt"] = t
+        elif n in ("roadName", "roadNumber") and not f["road"]:
+            f["road"] = t
+        elif n == "roadDestination" and not f["dest"]:
+            f["dest"] = t
+        elif n == "kilometerPoint" and not f["km"]:
+            f["km"] = t
+        elif n == "municipality" and not f["town"]:
+            f["town"] = t
+        elif n in ("from", "to", "pointByCoordinates", "point"):
+            lat = lon = None
+            for y in x.iter():
+                ln = _local_name(y.tag)
+                if ln == "latitude" and lat is None:
+                    lat = y.text
+                elif ln == "longitude" and lon is None:
+                    lon = y.text
+            pt = _coord(lat, lon) if lat and lon else None
+            if pt and n not in points:
+                points[n] = pt
+    rid = _clean(el.get("id"), 120)
+    if f["status"] not in (None, "active", "definedByValidityTimeSpec"):
+        return None
+    start = _parse_time(f["start"]) if f["start"] else 0
+    end = _parse_time(f["end"]) if f["end"] else 0
+    if start and start > now + 600:
+        return None
+    if end and end < now:
+        return None
+    kind = kind_of(rtype, f, lanes)
+    if not kind:
+        return None
+    # standing orders with no end, older than a year, aren't news (France lists some from 2023)
+    if not end and start and start < now - 365*86400 and kind != "closed":
+        return None
+    pt = points.get("from") or points.get("point") or points.get("pointByCoordinates") or points.get("to")
+    if not pt:
+        return None
+    return {"id": "%s:%s" % (source, rid), "source": source, "agency": agency, "type": kind,
+            "lat": pt[0], "lon": pt[1], "created": start, "expires": end,
+            "road": _clean(f["road"], 40), "km": _clean(f["km"], 12), "town": _clean(f["town"]),
+            "dest": _clean(f["dest"]), "detail": _clean(f["detail"] or "", 60),
+            "up": 0, "down": 0, "heading": -1}
 
 
 def _fetch_dgt():
@@ -533,22 +581,22 @@ def _parse_de(road, service, data):
     for e in items if isinstance(items, list) else []:
         if not isinstance(e, dict) or str(e.get("future")).lower() == "true":
             continue
-        c = e.get("coordinate") or {}
-        try:
-            lat, lon = float(c["lat"]), float(c["long"])
-        except Exception:
+        c = e.get("coordinate")
+        pt = _coord(c.get("lat"), c.get("long")) if isinstance(c, dict) else None
+        if not pt:
             continue
+        lat, lon = pt
         if not _in_bbox(lat, lon, GERMANY):
             continue
         kind = _de_kind(service, e)
         if not kind:
             continue
         title = str(e.get("title") or "")
-        out.append({"id": "autobahn:%s" % str(e.get("identifier") or "")[:120], "source": "autobahn",
+        out.append({"id": "autobahn:%s" % _clean(str(e.get("identifier") or ""), 120), "source": "autobahn",
                     "agency": "Autobahn", "type": kind, "lat": lat, "lon": lon,
                     "created": _parse_time(str(e.get("startTimestamp") or "")), "expires": 0,
-                    "road": road, "km": "", "town": title.split("|", 1)[-1].strip()[:80],
-                    "dest": str(e.get("subtitle") or "").strip()[:80], "detail": "",
+                    "road": _clean(road, 40), "km": "", "town": _clean(title.split("|", 1)[-1]),
+                    "dest": _clean(str(e.get("subtitle") or "")), "detail": "",
                     "up": 0, "down": 0, "heading": -1})
     return out
 
@@ -559,7 +607,7 @@ def _fetch_de_road(road):
         req = urllib.request.Request(DE_URL % (urllib.parse.quote(road), service),
                                      headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as r:
-            data = json.loads(netlimit.read_capped(r, netlimit.FEED).decode("utf-8"))
+            data = netlimit.json_loads(netlimit.read_capped(r, DE_CAP))
         out += _parse_de(road, service, data)
     return out
 
