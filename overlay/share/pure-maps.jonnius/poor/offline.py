@@ -21,6 +21,7 @@ import urllib.parse
 import urllib.request
 
 import poor
+from poor import netlimit
 
 TILEJSON = "https://tiles.openfreemap.org/planet"
 FONTS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
@@ -208,7 +209,7 @@ def fetch(url, tries=4):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=30) as r:
-                return r.read()
+                return netlimit.read_capped(r, netlimit.TILE)
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return None
@@ -338,7 +339,7 @@ def _area_name(bbox):
                "&accept-language=%s" % (zoom, y, x, urllib.parse.quote(_lang())))
         req = urllib.request.Request(url, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=15) as r:
-            res = json.loads(r.read().decode("utf-8"))
+            res = json.loads(netlimit.read_capped(r, netlimit.REPLY).decode("utf-8"))
         name = res.get("name") or (res.get("display_name") or "").split(",")[0]
         if name:
             return name.strip()

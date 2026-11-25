@@ -19,6 +19,7 @@ import copy
 import json
 import math
 import poor
+from poor import netlimit
 import threading
 import time
 import urllib.parse
@@ -156,7 +157,7 @@ def _overpass_one(server, body, delay, done):
         headers={"User-Agent": USER_AGENT,
                  "Content-Type": "application/x-www-form-urlencoded"})
     with urllib.request.urlopen(req, timeout=OVERPASS_TIMEOUT) as r:
-        data = json.loads(r.read().decode("utf-8"))
+        data = json.loads(netlimit.read_capped(r, netlimit.REPLY).decode("utf-8"))
     if "elements" not in data:
         raise RuntimeError("bad Overpass answer")
     return data
@@ -195,7 +196,7 @@ def photon_places(label, x, y, radius, name):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=PHOTON_TIMEOUT) as r:
-                return json.loads(r.read().decode("utf-8"))
+                return json.loads(netlimit.read_capped(r, netlimit.REPLY).decode("utf-8"))
         except Exception:
             return {}
 
@@ -237,7 +238,7 @@ def nominatim_places(label, x, y, radius):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=PHOTON_TIMEOUT) as r:
-            data = json.loads(r.read().decode("utf-8"))
+            data = json.loads(netlimit.read_capped(r, netlimit.REPLY).decode("utf-8"))
     except Exception:
         return []
     out = []

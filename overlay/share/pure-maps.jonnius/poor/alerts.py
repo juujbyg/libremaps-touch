@@ -28,6 +28,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 import poor
+from poor import netlimit
 import pyotherside
 from poor import nostr
 
@@ -220,7 +221,7 @@ def _fetch_dgt():
     req = urllib.request.Request(DGT_URL, headers={"User-Agent": USER_AGENT,
                                                    "Accept-Encoding": "gzip"})
     with urllib.request.urlopen(req, timeout=30) as r:
-        data = r.read()
+        data = netlimit.read_capped(r, netlimit.FEED)
         if r.headers.get("Content-Encoding", "") != "gzip":
             data = gzip.compress(data)
     try:
@@ -230,7 +231,7 @@ def _fetch_dgt():
         os.replace(path + ".tmp", path)
     except OSError:
         pass
-    return _parse_dgt(gzip.GzipFile(fileobj=io.BytesIO(data)))
+    return _parse_dgt(netlimit.CappedReader(gzip.GzipFile(fileobj=io.BytesIO(data)), netlimit.FEED_XML))
 
 
 # --------------------------------------------------------------- community

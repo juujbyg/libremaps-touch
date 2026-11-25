@@ -86,3 +86,5 @@ native speakers yet.
 
 GNU General Public License, version 3 or later. See `LICENSE`. The native code is Pure Maps
 3.5.0 (GPL-3.0) and [MapLibre Native Qt](https://github.com/maplibre/maplibre-native-qt) (BSD-2-Clause).
+`NOTICE` lists every bundled component (Pure Maps, mapbox-gl-qml, MapLibre, gpxpy, Inter,
+Lucide, the OSM Bright map style) with its licence; it also ships inside the app.
